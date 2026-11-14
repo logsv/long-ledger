@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__kite__login",
+      "mcp__kite__get_profile",
+      "mcp__kite__get_margins",
+      "mcp__kite__get_holdings",
+      "mcp__kite__get_positions",
+      "mcp__kite__get_trades",
+      "mcp__kite__get_orders",
+      "mcp__kite__get_order_history",
+      "mcp__kite__get_order_trades",
+      "mcp__kite__get_gtts",
+      "mcp__kite__get_mf_holdings",
+      "mcp__kite__get_quotes",
+      "mcp__kite__search_instruments",
+      "mcp__kite__get_historical_data",
+      "mcp__kite__get_ltp",
+      "mcp__kite__get_ohlc"
+    ],
+    "deny": [
+      "mcp__kite__place_order",
+      "mcp__kite__modify_order",
+      "mcp__kite__cancel_order",
+      "mcp__kite__place_gtt_order",
+      "mcp__kite__modify_gtt_order",
+      "mcp__kite__delete_gtt_order",
+      "mcp__fivepaisa__Place_Order",
+      "mcp__fivepaisa__Modify_Order",
+      "mcp__fivepaisa__Cancel_Order",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/creds.json)",
+      "Bash(security find-generic-password:*)",
+      "Bash(security dump-keychain:*)"
+    ]
+  }
+}

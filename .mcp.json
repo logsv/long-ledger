@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "indmoney": {
+      "type": "http",
+      "url": "https://mcp.indmoney.com/mcp"
+    },
+    "kite": {
+      "type": "http",
+      "url": "https://mcp.kite.trade/mcp"
+    }
+  }
+}

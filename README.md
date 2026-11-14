@@ -2,7 +2,7 @@
 
 A **personal-use** tool for analysing and getting recommendations on Indian equities (NSE/BSE), built for a long-term investor. It never does intraday trading.
 
-**Status:** design stage, no feature code yet. The full plan, with cited research, is in `docs/WORKSPACE_PLAN.md`.
+**Status:** early setup, no feature code yet. Full project documentation will be added as features are built.
 
 ## Goal
 
