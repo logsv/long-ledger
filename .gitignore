@@ -1,0 +1,41 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+creds.json
+*token*.json
+*.kdbx
+
+# Local data and caches (private, never redistributed)
+data/*
+!data/.gitkeep
+*.parquet
+*.duckdb
+*.sqlite
+*.db
+logs/
+audit_export/
+
+# Broker statements and imports
+*.pdf
+*.csv
+*.xlsx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
