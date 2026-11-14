@@ -2,7 +2,7 @@
 
 A **personal-use** tool for analysing and getting recommendations on Indian equities (NSE/BSE), built for a long-term investor. It never does intraday trading.
 
-**Status:** design stage. No feature code yet. Read `docs/FEASIBILITY_AND_DESIGN.md` and `docs/DECISIONS.md`.
+**Status:** design stage. No feature code yet. Read `docs/FEASIBILITY_AND_DESIGN.md`, `docs/DECISIONS.md` and `docs/IMPLEMENTATION_OPTIONS.md`. The last one compares five ways to build this and recommends a Claude Code workspace with a deterministic Python core; that choice is awaiting approval.
 
 ## Goal
 
