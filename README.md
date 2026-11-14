@@ -1,32 +1,137 @@
 # India Stock Analyzer
 
-A **personal-use** tool for analysing and getting recommendations on Indian equities (NSE/BSE), built for a long-term investor. It never does intraday trading.
+A personal-use analysis workspace for long-term investors in Indian equities (NSE/BSE). It runs in [Claude Code](https://claude.com/claude-code):
+- Claude fetches your broker records and reads company documents.
+- A small, deterministic Python core stores the data and computes every signal: BUY / ACCUMULATE / HOLD / TRIM / SELL, with a confidence score, a plain-language "why", sell triggers, portfolio caps and a tax view.
 
-**Status:** early setup, no feature code yet. Full project documentation will be added as features are built.
+> **Analysis only.** The tool never places, modifies or cancels orders. You place every order yourself in your broker's app.
+> Personal use only. Not investment or tax advice.
 
-## Goal
+## Features
 
-- Pull portfolio records from **Zerodha Kite and INDmoney** through their official MCP servers, and from **5paisa** through its Xstream REST API (read-only endpoints only). CAS and CSV imports are the fallback.
-- Score each holding and watchlist stock with an **explainable engine**: macro, sector, fundamentals, governance, valuation, events, and technicals (used for timing only).
-- Output BUY / ACCUMULATE / HOLD / TRIM / SELL with a confidence score, a plain-language "why", sell triggers, a portfolio view and tax-aware (STCG/LTCG) suggestions.
-- **Analysis only: the tool never places orders.** You place every order yourself in the broker app.
-- No automated access to NSE or BSE websites (NSE terms prohibit it). Exchange files are downloaded by hand into an import folder.
+- **Broker records through official MCP servers.** Zerodha Kite and INDmoney, read tools only, with every order and GTT tool blocked. 5paisa tradebooks import as CSV.
+- **Manual-download imports.** Tradebooks, prices, sector lists, fundamentals exports, and annual-report or results PDFs. Claude extracts PDFs with page references, and each extracted figure waits for your confirmation.
+- **Explainable scoring.** Fundamentals, governance (red flags veto BUY) and valuation, against the stock's own history, its peers and an intrinsic-value range with stated assumptions. Technicals change timing advice only.
+- **Sell triggers:**
+  - your own thesis conditions breaking
+  - a 20% loss together with weakening fundamentals
+  - valuation stretched above intrinsic value
 
-## Planned stack
+  A loss on its own never triggers a sell.
+- **Portfolio view.** Weights, sector exposure, cap breaches (10% per stock, 25% per sector) and broker reconciliation.
+- **Tax view.** FIFO lots per demat, STCG/LTCG under the Income-tax Act, 2025 (s.196 / s.198), the long-term date per lot, "wait until" hints and the remaining LTCG exemption.
+- **Audit log.** Append-only and hash-chained. Records every import, signal and decision.
+- **HTML report.** A single self-contained file.
 
-**Claude Code workspace** (`CLAUDE.md`, slash commands, a skill, read-only subagents, broker MCPs in `.mcp.json`) over a **deterministic Python 3.12 core** (uv) with **SQLite** and a generated **HTML report**. Secrets live in the macOS Keychain. Code decides every label; Claude fetches, extracts and explains.
+## Status
 
-## How it will run (planned)
+Version 0.1.0 (MVP).
 
-1. Open the repo in Claude Code. Sign in to the INDmoney and Kite MCPs once a day (the brokers expire sessions daily).
-2. `/sync` pulls holdings, positions and trades through the broker MCPs (read tools only) into `data/isa.db`.
-3. Drop manual downloads (CAS, tradebooks, NSE/BSE files, Screener/Tijori exports, annual reports) into `data/imports/` and run `/import`.
-4. `/portfolio` runs the scoring engine and shows each holding's label, confidence, "why", sell triggers and tax view. `/analyze <stock>`, `/sell-review`, `/thesis <stock>` and `/report` cover the rest.
-5. Every signal and every decision you record is written to the audit log. You place any order yourself in the broker app.
-6. Everything runs inside a Claude Code session you start. There are no scheduled runs or push alerts.
+| Area | Status |
+|---|---|
+| Kite and INDmoney sync via MCP | Built (`/sync`). INDmoney tool names are discovered at sign-in. |
+| 5paisa | Tradebook CSV import. The read-only REST client is planned. |
+| Fundamentals, governance, valuation blocks | Built |
+| Macro, sector and events blocks | Planned. Until then confidence tops out at about 70/100. |
+| CAS PDF parsing | Planned. Use broker tradebooks for now. |
+| Loss set-off, 2018 grandfathering, STT | Not modelled. Tax figures are gross estimates. |
+| Backtesting | Planned |
 
-## Boundaries
+## Requirements
 
-- Personal use only. Do not share signals: showing recommendations to others can require SEBI RA/IA registration.
-- No redistribution of market data.
-- Not investment or tax advice.
+- Python 3.12 or newer. No third-party packages.
+- Claude Code (desktop or CLI).
+- A Zerodha and/or INDmoney account, for the MCP sign-in.
+
+## Quick start
+
+```bash
+cd ~/Documents/india-stock-analyzer
+python3 tools/isa.py init              # creates data/isa.db
+python3 -m unittest discover -s tests  # 28 tests
+python3 tools/security_guards.py       # order tools blocked, secrets ignored
+```
+
+Then open the folder in Claude Code:
+
+1. Approve the project MCP servers (`indmoney`, `kite`) when asked. Run `/mcp` to sign in. Sign-in happens on each broker's own page, and both sessions expire daily.
+2. Run `/sync` to pull holdings, today's trades and daily prices.
+3. Put manual downloads into `data/imports/` and run `/import`. The first time, include your Kite Console tradebook so tax lots have buy dates.
+4. Run `/portfolio`, `/analyze SYMBOL`, `/sell-review`, `/thesis SYMBOL` and `/report`.
+
+## Slash commands
+
+| Command | What it does |
+|---|---|
+| `/sync` | Kite and INDmoney holdings, trades and prices into the database (read tools only) |
+| `/import` | Load files from `data/imports/`; PDFs go through the `filing-reader` and `governance-checker` subagents; confirm extracted facts |
+| `/portfolio` | Score holdings and watchlist; show labels, triggers, caps, tax waits |
+| `/analyze SYMBOL` | Full breakdown: every evidence line, valuation assumptions, timing, tax lots |
+| `/sell-review` | Holdings with sell triggers, with lot-by-lot tax impact |
+| `/thesis SYMBOL` | Write or review checkable thesis conditions |
+| `/report` | Write the HTML report to `data/reports/` |
+
+## Core CLI
+
+Claude calls the core through `tools/isa.py`. You can call it too. Every command prints JSON.
+
+```bash
+python3 tools/isa.py --help
+python3 tools/isa.py import-trades --source kite --file data/imports/tradebook.csv
+python3 tools/isa.py watch add HDFCBANK
+python3 tools/isa.py thesis add HDFCBANK roe '>=' 15 --note "returns stay above 15%"
+python3 tools/isa.py portfolio
+python3 tools/isa.py analyze HDFCBANK --no-record
+python3 tools/isa.py tax
+python3 tools/isa.py report
+python3 tools/isa.py audit verify
+```
+
+File formats are described in [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md).
+
+## Project layout
+
+```
+CLAUDE.md                 workspace rules and investor profile (read by Claude)
+.mcp.json                 Kite and INDmoney MCP servers
+.claude/settings.json     permissions: order tools denied, core CLI allowed
+.claude/commands/         /sync /import /portfolio /analyze /sell-review /thesis /report
+.claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary)
+.claude/agents/           filing-reader, governance-checker, news-summarizer (read-only)
+config/                   weights, thresholds, valuation assumptions, tax rules (TOML)
+src/isa/                  deterministic core: storage, importers, engine, tax, portfolio, report, audit
+tools/                    isa.py (CLI), security_guards.py
+tests/                    unit and end-to-end tests (synthetic data)
+data/                     git-ignored: isa.db, imports/, reports/
+```
+
+How the pieces fit is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Configuration
+
+All tunables are in `config/*.toml`:
+
+| File | Contents |
+|---|---|
+| `weights.toml` | Block weights, label cut-offs, confidence settings |
+| `thresholds.toml` | Loss trigger (20%), caps (10% / 25%), governance limits, index symbol for relative strength |
+| `valuation.toml` | DCF discount rate, terminal growth, growth caps |
+| `tax.toml` | STCG/LTCG rates, the exemption and the holding period, each with its official source URL |
+
+`.env.example` lists the optional environment settings. Secrets never go in `.env`.
+
+## Safety
+
+See [SECURITY.md](SECURITY.md). In short:
+- Order and GTT tools are denied, and a CI guard enforces it.
+- No secrets in the repo, and Claude cannot read `.env`.
+- No automated access to nseindia.com or bseindia.com, which their terms prohibit.
+- All imported content is treated as untrusted data.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
+
+## Disclaimer
+
+This software is for the owner's personal research. It is not investment advice, research or tax advice, and it is not registered with SEBI as a Research Analyst or Investment Adviser. Do not share its output as recommendations. Market data from brokers is subject to their terms, for example Kite's ban on public display. Figures may be wrong; check them before acting.

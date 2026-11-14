@@ -1,0 +1,22 @@
+# Block weights for the composite score. Blocks without data are dropped and
+# the remaining weights are renormalised; the missing share lowers confidence.
+# Technicals have no weight: they only change timing advice.
+[weights]
+macro = 0.10        # Phase 2
+sector = 0.10       # Phase 2
+fundamentals = 0.30
+governance = 0.20
+valuation = 0.20
+events = 0.10       # Phase 2
+
+# Composite (-2..+2) to label. Checked top-down: first match wins.
+[labels]
+buy = 1.0
+accumulate = 0.4
+hold = -0.4         # composite > hold  -> HOLD
+trim = -1.0         # composite > trim  -> TRIM, otherwise SELL
+
+[confidence]
+min_block_completeness = 0.3   # below this for every block -> INSUFFICIENT_DATA
+stale_fundamentals_days = 456  # ~15 months without a new annual filing
+stale_price_days = 7

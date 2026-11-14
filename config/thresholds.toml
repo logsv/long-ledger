@@ -1,0 +1,25 @@
+# User settings (answers Q9, 2026-11-14) and engine thresholds.
+
+[portfolio]
+max_stock_weight = 0.10
+max_sector_weight = 0.25
+
+[sell_triggers]
+loss_threshold = 0.20              # loss of 20%+ ...
+fundamentals_drop = 1.0            # ... AND fundamentals score fell by >= 1.0
+fundamentals_lookback_days = 182   # compared with ~2 quarters ago
+valuation_stretch = 0.30           # price > upper intrinsic value by 30%+
+
+[governance]
+pledge_veto_pct = 25.0             # promoter pledge above this vetoes BUY/ACCUMULATE
+pledge_rise_veto_pts = 5.0         # pledge up by this many points in a year vetoes too
+rpt_warn_pct = 10.0                # related-party transactions as % of revenue
+rpt_bad_pct = 20.0
+dilution_cagr_warn = 0.05          # shares outstanding 3y CAGR
+
+[technicals]
+index_symbol = "NIFTY 500"         # import its daily prices to enable relative strength
+stagger_tranches = 3
+
+[tax_view]
+wait_window_days = 30              # suggest waiting if a lot turns long-term this soon

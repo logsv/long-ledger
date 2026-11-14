@@ -1,0 +1,16 @@
+# Listed equity shares with STT paid. Verified 2026-11-14 on incometaxindia.gov.in.
+# Loss set-off, grandfathering and STT are NOT modelled (not yet verified).
+act = "Income-tax Act, 2025"
+long_term_after_months = 12      # long-term if held MORE than 12 months
+fy_start_month = 4               # financial year starts 1 April
+
+[stcg]
+section = "196"
+rate = 0.20
+source = "https://www.incometaxindia.gov.in/w/section-196-76"
+
+[ltcg]
+section = "198"
+rate = 0.125
+annual_exemption = 125000
+source = "https://wm.incometaxindia.gov.in/w/section-198-78"

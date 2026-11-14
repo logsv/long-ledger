@@ -1,0 +1,9 @@
+# Intrinsic value assumptions (2-stage DCF on free cash flow per share).
+# Every value is shown next to the result in the report.
+discount_rate = 0.12
+terminal_growth = 0.05
+stage1_years = 10
+max_growth = 0.20          # cap on stage-1 growth
+growth_low_factor = 0.7    # low case = base growth x this, discount + 1%
+growth_high_factor = 1.2   # high case = base growth x this, discount - 1%
+pe_history_years = 10
