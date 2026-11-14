@@ -30,7 +30,18 @@ Never ask for credentials in chat.
    - Save to `data/imports/mcp/indmoney-holdings-<date>.json` and run `python3 tools/isa.py import-holdings --source indmoney --file <that file>`.
    - Check that the stored count matches the number of holdings the tool showed.
 
-## Step 3: Report
+## Step 3: 5paisa (read-only API, not MCP)
+1. Run `python3 tools/isa.py fivepaisa status`.
+   - If it reports an error about missing settings, tell the user which `.env` values to fill: `FIVEPAISA_USER_KEY`, `FIVEPAISA_USER_ID`, `FIVEPAISA_CLIENT_CODE`. They come from the Xstream dashboard.
+   - If the encryption key is missing, show the user this command to run **themselves** in a terminal. Never ask for the key in chat:
+     `security add-generic-password -s india-stock-analyzer -a fivepaisa_encryption_key -w`
+2. If `logged_in` is false, run `python3 tools/isa.py fivepaisa login`.
+   - It opens 5paisa's own login page. The user enters their PIN and TOTP there. The command waits up to 5 minutes for the redirect.
+   - If the user's registered redirect URL is not on 127.0.0.1, use `fivepaisa login --no-browser` instead. The user then runs `python3 tools/isa.py fivepaisa token` in their own terminal and pastes the RequestToken there.
+3. Run `python3 tools/isa.py fivepaisa sync`. It stores holdings, today's delivery trades and daily prices for held stocks.
+   - Like Kite, 5paisa returns **today's trades only**. Older 5paisa trades come from a tradebook CSV through `/import`.
+
+## Step 4: Report
 - Show per broker: holdings stored, trades stored, symbols with prices refreshed, and any `skipped` rows with their reasons.
 - Run `python3 tools/isa.py portfolio --no-record` and show any `reconciliation` issues. They usually mean an older tradebook or a corporate action is missing.
 - Suggest `/portfolio` next.

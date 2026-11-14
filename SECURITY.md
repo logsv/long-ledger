@@ -25,12 +25,17 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
   - `.gitignore` covers `.env*`, `creds.json`, key files, `data/`, PDFs and CSVs.
 - **Broker sign-ins:**
   - Kite and INDmoney sign-ins happen on the brokers' own pages through Claude Code's `/mcp`, and Claude Code holds those sessions. Never paste passwords, PINs, TOTP secrets or tokens into chat.
-  - The 5paisa MCP was rejected because it requires a plaintext `creds.json`. The planned 5paisa API client will keep its encryption key in the macOS Keychain and use 5paisa's own login page daily.
+  - **5paisa** uses its read-only API, not its MCP. The MCP was rejected because it needs a plaintext `creds.json` with your password, PIN and TOTP secret.
+  - Login happens daily on 5paisa's own page; you enter your PIN and TOTP there.
+  - The redirect is caught by a one-shot listener on 127.0.0.1, which checks a random `state` value.
+  - The encryption key, which you store yourself, and the access token (valid until 23:59 IST) live in the macOS Keychain under the service `india-stock-analyzer`.
+  - `fivepaisa status` never prints secrets.
+  - The client refuses any endpoint not on its read-only allowlist, and the guard checks that allowlist.
 
 ## Personal data
 
 - `data/` (database, imports, reports) is git-ignored and stays on your Mac.
-- No server listens on the network.
+- No server listens on the network. The one exception is `fivepaisa login`, which listens on 127.0.0.1 for a single redirect, for at most 5 minutes.
 - Claude is told never to put holdings or account data into web searches or external requests.
 
 ## Untrusted content

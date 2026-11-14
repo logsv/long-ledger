@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
 
 from . import audit, service
-from .config import ROOT, Config, db_path
+from .config import ROOT, Config, db_path, load_dotenv
 from .engine import scoring
 from .importers import broker, facts, market
 from .importers.common import ImportError_, load_records, parse_date
@@ -191,6 +192,48 @@ def cmd_audit(conn, cfg, args):
     return audit.tail(conn, args.n)
 
 
+def _fivepaisa_client():
+    from .brokers.fivepaisa import FivePaisaClient, Settings
+    from .brokers.keychain import SERVICE, Keychain
+    return FivePaisaClient(Settings.from_env(), Keychain(os.environ.get("KEYCHAIN_SERVICE") or SERVICE))
+
+
+def cmd_fivepaisa(conn, cfg, args):
+    from .brokers import fivepaisa as fp
+    from .brokers.keychain import KeychainError
+    try:
+        client = _fivepaisa_client()
+        if args.action == "status":
+            return {"configured": True, "encryption_key_in_keychain": bool(client.store.get(fp.ENCRYPTION_KEY_ITEM)),
+                    "response_url": client.s.response_url, **client.token_status()}
+        if args.action == "login":
+            if args.no_browser:
+                state = "manual"
+                return {"open_this_url": client.login_url(state),
+                        "then": "after login, copy RequestToken from the address bar and run: "
+                                "python3 tools/isa.py fivepaisa token  (paste it on stdin)"}
+            res = fp.browser_login(client, timeout=args.timeout)
+            audit.append(conn, "import", {"kind": "fivepaisa_login", "client_code": res["client_code"]})
+            conn.commit()
+            return {"logged_in": True, **res}
+        if args.action == "token":
+            token = sys.stdin.readline().strip()
+            if not token:
+                raise ValueError("paste the RequestToken on stdin")
+            res = client.exchange_request_token(token)
+            return {"logged_in": True, **res}
+        if args.action == "logout":
+            return {"logged_out": client.logout()}
+        res = fp.sync(conn, client, prices=not args.no_prices)
+        audit.append(conn, "import", {"kind": "fivepaisa_sync", "holdings": res["holdings"],
+                                      "trades": res["trades"],
+                                      "prices": {k: v for k, v in res["prices"].items() if isinstance(v, int)}})
+        conn.commit()
+        return res
+    except (fp.FivePaisaError, KeychainError) as exc:
+        return {"error": str(exc), "session_expired": isinstance(exc, fp.SessionExpired)}
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="isa", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -252,6 +295,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("symbol")
     s.add_argument("action", choices=DECISIONS)
     s.add_argument("--note")
+    s = sub.add_parser("fivepaisa", help="5paisa read-only API: status, login, token, sync, logout")
+    s.add_argument("action", choices=("status", "login", "token", "sync", "logout"))
+    s.add_argument("--no-browser", action="store_true", help="print the login URL instead of opening it")
+    s.add_argument("--timeout", type=int, default=300, help="seconds to wait for the login redirect")
+    s.add_argument("--no-prices", action="store_true", help="skip daily price download")
     s = sub.add_parser("audit")
     s.add_argument("action", choices=("tail", "verify"))
     s.add_argument("-n", type=int, default=20)
@@ -272,12 +320,14 @@ def main(argv: list[str] | None = None) -> int:
     p = build_parser()
     args = p.parse_args(argv)
     _validate(args, p)
+    load_dotenv()
     cfg = Config.load()
     conn = connect(db_path())
     try:
         handler = globals()["cmd_" + args.cmd.replace("-", "_")]
-        _print(handler(conn, cfg, args))
-        return 0
+        result = handler(conn, cfg, args)
+        _print(result)
+        return 2 if isinstance(result, dict) and "error" in result else 0
     except (ImportError_, ValueError, json.JSONDecodeError, FileNotFoundError) as exc:
         _print({"error": str(exc)})
         return 2

@@ -2,6 +2,17 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-15
+
+### Added
+- **5paisa Xstream API client** (read-only): `fivepaisa status | login | token | sync | logout`.
+  - Covers holdings, today's delivery trades and daily cash-segment candles.
+  - Login uses 5paisa's own page with a 127.0.0.1 callback that checks `state`.
+  - The encryption key and access token live in the macOS Keychain.
+  - An endpoint allowlist is enforced by the client and by `security_guards.py`.
+- `.env` loading for non-secret settings.
+- 13 new tests using a fake 5paisa server (41 in total).
+
 ## [0.1.0] - 2026-11-14
 
 ### Added
@@ -28,7 +39,6 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - **`tools/security_guards.py`**, 28 unit and end-to-end tests, and a CI workflow.
 
 ### Not yet included
-- The 5paisa read-only REST client. Use 5paisa tradebook CSV import for now.
 - The macro, sector and events blocks.
 - CAS PDF parsing.
 - Loss set-off and grandfathering in the tax view.

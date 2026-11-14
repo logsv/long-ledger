@@ -7,6 +7,7 @@
 3. .gitignore still ignores secrets and local data.
 4. No code under src/ or tools/ calls a broker order endpoint: this tool never
    places orders.
+5. The 5paisa client's endpoint allowlist holds read-only endpoints only.
 """
 
 from __future__ import annotations
@@ -83,9 +84,20 @@ def check_no_order_code(errors: list[str]) -> None:
                     errors.append(f"{f.relative_to(ROOT)}:{i}: order-placement reference")
 
 
+FIVEPAISA_READ_ONLY = {"GetAccessToken", "V3/Holding", "V1/TradeBook", "V3/NetPositionNetWise"}
+
+
+def check_fivepaisa_allowlist(errors: list[str]) -> None:
+    sys.path.insert(0, str(ROOT / "src"))
+    from isa.brokers import fivepaisa
+    extra = set(fivepaisa.READ_ENDPOINTS.values()) - FIVEPAISA_READ_ONLY
+    for path in sorted(extra):
+        errors.append(f"5paisa client: endpoint not on the read-only list: {path}")
+
+
 def main() -> int:
     errors: list[str] = []
-    for check in (check_settings, check_mcp, check_gitignore, check_no_order_code):
+    for check in (check_settings, check_mcp, check_gitignore, check_no_order_code, check_fivepaisa_allowlist):
         try:
             check(errors)
         except (OSError, json.JSONDecodeError) as exc:

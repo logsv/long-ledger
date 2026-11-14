@@ -66,6 +66,8 @@ flowchart LR
 | `portfolio/` | Positions across brokers, weights, sector exposure, caps, reconciliation |
 | `report/` | Self-contained HTML (escaped, no scripts, light and dark) |
 | `audit/` | Append-only, SHA-256 hash-chained events; database triggers block UPDATE and DELETE |
+| `brokers/fivepaisa.py` | 5paisa Xstream client, **read-only**. Endpoint allowlist: GetAccessToken, V3/Holding, V1/TradeBook, V3/NetPositionNetWise, plus V2/historical daily cash-segment candles. Browser login with a one-shot 127.0.0.1 callback that checks `state` |
+| `brokers/keychain.py` | macOS Keychain access through `/usr/bin/security`, for the encryption key and the daily access token |
 | `service.py` / `cli.py` | Orchestration and the JSON CLI |
 
 ## Scoring summary
@@ -96,5 +98,5 @@ Full details are in `.claude/skills/stock-analysis/02-scoring-rubric.md`.
 ## Extending
 
 - **New block** (macro, sector, events): add a module under `engine/` returning a `BlockResult`. Register it in `scoring._blocks`, and remove its name from `PHASE2_BLOCKS`. Its weight already exists in `config/weights.toml`.
-- **5paisa REST client:** add it under `src/isa/` with a hard allowlist of read endpoints. `tools/security_guards.py` fails the build if order-endpoint names appear in code.
+- **More 5paisa data:** add only read endpoints to `READ_ENDPOINTS`, and to the guard's `FIVEPAISA_READ_ONLY` set, in the same change. The guard fails on anything else.
 - **New metric:** add it to `importers/facts.METRICS`, then use it in a block.

@@ -9,7 +9,7 @@ A personal-use analysis workspace for long-term investors in Indian equities (NS
 
 ## Features
 
-- **Broker records through official MCP servers.** Zerodha Kite and INDmoney, read tools only, with every order and GTT tool blocked. 5paisa tradebooks import as CSV.
+- **Broker records, read-only.** Zerodha Kite and INDmoney come through their official MCP servers, with every order and GTT tool blocked. 5paisa comes through its Xstream API, using a client that can only call four read endpoints.
 - **Manual-download imports.** Tradebooks, prices, sector lists, fundamentals exports, and annual-report or results PDFs. Claude extracts PDFs with page references, and each extracted figure waits for your confirmation.
 - **Explainable scoring.** Fundamentals, governance (red flags veto BUY) and valuation, against the stock's own history, its peers and an intrinsic-value range with stated assumptions. Technicals change timing advice only.
 - **Sell triggers:**
@@ -25,12 +25,12 @@ A personal-use analysis workspace for long-term investors in Indian equities (NS
 
 ## Status
 
-Version 0.1.0 (MVP).
+Version 0.2.0.
 
 | Area | Status |
 |---|---|
 | Kite and INDmoney sync via MCP | Built (`/sync`). INDmoney tool names are discovered at sign-in. |
-| 5paisa | Tradebook CSV import. The read-only REST client is planned. |
+| 5paisa | Built: read-only API (`fivepaisa login` / `sync`) for holdings, today's trades and daily prices. Older trades come from tradebook CSV. |
 | Fundamentals, governance, valuation blocks | Built |
 | Macro, sector and events blocks | Planned. Until then confidence tops out at about 70/100. |
 | CAS PDF parsing | Planned. Use broker tradebooks for now. |
@@ -48,7 +48,7 @@ Version 0.1.0 (MVP).
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db
-python3 -m unittest discover -s tests  # 28 tests
+python3 -m unittest discover -s tests  # 41 tests
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -63,7 +63,7 @@ Then open the folder in Claude Code:
 
 | Command | What it does |
 |---|---|
-| `/sync` | Kite and INDmoney holdings, trades and prices into the database (read tools only) |
+| `/sync` | Kite and INDmoney (MCP) plus 5paisa (API) holdings, trades and prices into the database |
 | `/import` | Load files from `data/imports/`; PDFs go through the `filing-reader` and `governance-checker` subagents; confirm extracted facts |
 | `/portfolio` | Score holdings and watchlist; show labels, triggers, caps, tax waits |
 | `/analyze SYMBOL` | Full breakdown: every evidence line, valuation assumptions, timing, tax lots |
@@ -85,6 +85,15 @@ python3 tools/isa.py analyze HDFCBANK --no-record
 python3 tools/isa.py tax
 python3 tools/isa.py report
 python3 tools/isa.py audit verify
+python3 tools/isa.py fivepaisa status   # then: fivepaisa login, fivepaisa sync
+```
+
+**5paisa setup, once:**
+1. Copy `.env.example` to `.env` and fill in `FIVEPAISA_USER_KEY`, `FIVEPAISA_USER_ID` and `FIVEPAISA_CLIENT_CODE` from the [Xstream dashboard](https://xstream.5paisa.com/dashboard). Register `http://127.0.0.1:8765/5paisa/callback` as the redirect URL if the dashboard allows it.
+2. Store the encryption key in the Keychain. The command prompts for it, so it never appears on screen or in shell history:
+
+```bash
+security add-generic-password -s india-stock-analyzer -a fivepaisa_encryption_key -w
 ```
 
 File formats are described in [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md).

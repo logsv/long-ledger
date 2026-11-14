@@ -23,7 +23,7 @@ This repo is a personal stock-analysis workspace for one long-term investor in I
 - Long-term investor; never intraday or same-day trades. Sells only when the analysis says so: book profit, cut a worsening loss, or exit on a broken thesis.
 - Brokers:
   - **Zerodha Kite** and **INDmoney**: official MCP servers, read tools only.
-  - **5paisa**: read-only REST API (not built yet); until then, tradebook CSV import.
+  - **5paisa**: read-only Xstream API through `python3 tools/isa.py fivepaisa ...`, not MCP. Login happens on 5paisa's own page, and the encryption key and token stay in the macOS Keychain.
 - User settings (`config/thresholds.toml`):
   - The loss trigger needs a 20% loss AND weakening fundamentals.
   - Caps: 10% per stock, 25% per sector.
@@ -33,7 +33,7 @@ This repo is a personal stock-analysis workspace for one long-term investor in I
 
 | Command | Purpose |
 |---|---|
-| `/sync` | Pull holdings, trades and prices from the Kite and INDmoney MCPs into the database |
+| `/sync` | Pull holdings, trades and prices from the Kite and INDmoney MCPs and the 5paisa read-only API into the database |
 | `/import` | Load files from `data/imports/` (CAS/tradebooks, prices, fundamentals, PDFs via the filing-reader subagent) and confirm extracted facts |
 | `/portfolio` | Score every holding and watchlist stock; show labels, triggers, caps and tax waits |
 | `/analyze <SYMBOL>` | Full breakdown for one stock |
