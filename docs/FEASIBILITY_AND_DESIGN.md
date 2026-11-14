@@ -12,6 +12,21 @@
 
 **User direction (2026-11-14):** "GO with MCP to fetch records". As a result, broker records (holdings, positions, orders, P&L) are fetched first through each broker's **official MCP server**. Direct REST APIs and file imports remain as fallbacks (see §1.4 and DECISIONS D-02).
 
+**User answers to the open questions (2026-11-14)** apply throughout this report:
+
+| Q | Answer | Effect on design |
+|---|---|---|
+| Q1 Sharing | **Only me** | Strictly personal. No sharing features. Disclaimer on exports. |
+| Q2 Kite plan | **Free Personal + Kite MCP first** | Use MCP `get_historical_data`; upgrade to Connect (₹500/mo) only if it falls short |
+| Q3 Exchange terms | Checked by me in the browser (§2) | **NSE prohibits automated collection.** Exchange files are downloaded by hand only. |
+| Q4 Fundamentals | **Manual export + filings** | Personal exports from your own Screener/Tijori account plus filings you download. Vendor decision deferred. |
+| Q5 Tax | **Claude research step**, now done (§3.5) | Income-tax Act 2025 s.196 / s.198 verified |
+| Q6 Orders | **Never: analysis only** | No order code at all. Every MCP order tool is blocked. |
+| Q7 5paisa | **Use the 5paisa MCP** | Wrapped: read-tool allowlist, secrets injected from the Keychain, no plaintext `creds.json` (D-05) |
+| Q8 Universe | **Holdings + watchlist** | Smaller data load. Nifty 500 screening deferred. |
+| Q9 Thresholds | **20% loss; 10% per stock, 25% per sector** | Defaults in `config/` |
+| Q10 Hosting | **Mac only** | Localhost; jobs run while the Mac is awake; catch-up run on wake |
+
 ---
 
 ## 0. Executive summary
@@ -21,7 +36,7 @@
    - INDmoney: hosted, read-only, OAuth 2.1, free.
    - 5paisa: runs locally, free, and **can place orders**.
 2. Zerodha and 5paisa also have documented REST and WebSocket APIs. INDmoney has **no public REST API** that I could find, so its MCP is the only programmatic route.
-3. SEBI's retail algo framework applies to **orders** placed through APIs: static IP, OAuth plus 2FA, and exchange-issued algo IDs. Since 1 April 2026 it applies to all brokers. A design that **never places orders automatically**, and in the MVP places no orders at all, keeps the tool out of almost all of that.
+3. SEBI's retail algo framework applies to **orders** placed through APIs: static IP, OAuth plus 2FA, and exchange-issued algo IDs. Since 1 April 2026 it applies to all brokers. The tool **never places orders** in any phase (Q6), which keeps it out of that framework.
 4. Using the tool only for yourself does not meet SEBI's definition of an Investment Adviser, which requires advice given "for consideration … to clients". **Showing the signals to other people** is the line to avoid. Under the Research Analyst rules, publishing buy/sell/hold recommendations can require registration.
 5. The hard part is **licensed fundamentals data**, not prices. No free, licence-clear fundamentals API was verified. The MVP uses exchange filings plus manual personal-use exports, and treats a paid vendor as a later decision.
 6. **Verdict: GO-WITH-CONDITIONS** (§7).
@@ -114,7 +129,7 @@ The fallbacks follow one design rule: **every connector writes the same canonica
 
 1. **INDmoney MCP.** It is read-only by design, uses standard OAuth 2.1 PKCE, and is the only programmatic route to INDmoney. It is the lowest-risk way to prove the MCP-client pattern.
 2. **Kite MCP.** Use the hosted endpoint for holdings, positions and trades. Use **Kite Connect REST** only if historical data or reliability needs it (₹500/mo).
-3. **5paisa.** Use the **Xstream REST API with read-only endpoints only** (holdings, positions, trades). Do not use the local MCP, because it can place orders and its default setup keeps the TOTP secret in plaintext. Revisit the MCP once order tools can be disabled.
+3. **5paisa MCP** (user choice, Q7), with two safeguards. (a) The tool's MCP client exposes only a **read-tool allowlist**: any order tool is refused in code and logged. (b) The server is launched by the tool with credentials **injected at start time from the macOS Keychain**, not from a plain `creds.json`. The exact tool names and whether the server can take credentials from the environment instead of the file must be checked in the spike [U]. If (b) is not possible, fall back to the Xstream REST API with read-only endpoints.
 4. **CAS import** for reconciliation, from the MVP onward.
 
 ---
@@ -137,13 +152,33 @@ The fallbacks follow one design rule: **every connector writes the same canonica
 | Crude | [U]: needs a source (EIA or a commodity feed) | — | — | — | [U] |
 | News sentiment | Exchange announcements (free, primary). TrueData News API (paid). | — | — | — | [U] |
 
-**Recommended starting set [A]:**
-- Exchange filings and bhavcopy: verify their terms first (open question Q3).
-- Broker MCPs for the portfolio and for prices of held and watched names.
-- RBI for rates and INR.
-- niftyindices for index valuation.
-- Fundamentals: manual personal-use CSV export plus XBRL parsing in the MVP. Get quotes from TrueData and Global Datafeeds before Phase 2.
-- Do **not** scrape Screener or Tijori.
+**Exchange terms, verified 2026-11-14 in the browser:**
+- **NSE** (https://www.nseindia.com/nse-terms-of-use, updated 29/10/2025) [V]:
+  - "User is prohibited to conduct any systematic or automated data collection activities (including scraping, data mining, data extraction and data harvesting)".
+  - Content must not be "copied … stored (either in hardcopy or in an electronic retrieval system) … distributed … without prior written permission of NSE". The only carve-out: "Unless the information or Content is available for download".
+  - Data must not be used "for any gaming, virtual trading or simulation activities".
+- **BSE** (could not open the terms page; found via search, so [S]):
+  - The main disclaimer says "Any reproduction, redistribution or transmission … is strictly prohibited" (https://www.bseindia.com/rgess/disclaimer.htm).
+  - BSE Plus terms forbid creating a database "by regularly or systematically downloading and storing" pages (https://bseplus.bseindia.com/Terms_condition_Bseplus.htm).
+  - Licensed products: https://beta.bseindia.com/market_data_products.html?flag=real
+
+**Consequences:**
+- The tool makes **no automated requests to nseindia.com or bseindia.com**.
+- Files the exchanges publish *for download* (bhavcopy, shareholding, results) are downloaded **by the user** and placed in an import folder. Using that data for personal analysis is the intended use of a download, but this is my reading, not legal advice [A].
+- NSE's ban on "simulation" use applies to backtesting on NSE website data. **Backtests must use broker-supplied historical data** (Kite, 5paisa or INDmoney via MCP) or a licensed vendor, not NSE website files [A].
+- niftyindices.com terms are still [U]. Treat them the same way: manual download only.
+
+**Starting set (updated for the answers above):**
+- **Prices:** from broker MCPs for holdings and watchlist (Q8): Kite `get_historical_data` or `get_ohlc`, INDmoney OHLC, 5paisa market data.
+- **Fundamentals (Q4):**
+  - Manual personal-use exports from your own Screener or Tijori account.
+  - Results and filings PDFs/XBRL you download yourself from NSE/BSE.
+  - The tool parses whatever is in the import folder.
+- **Shareholding, pledges, corporate actions:** from the same manual exchange downloads, refreshed quarterly.
+- **Macro:**
+  - RBI rates and INR from rbi.org.in. RBI terms are [U], so fetch once a day at most.
+  - FII/DII and index valuation by manual download.
+- **Not used:** no scraping of Screener, Tijori, NSE or BSE. A paid vendor (TrueData, Global Datafeeds) is the upgrade path if manual imports become a burden.
 
 ---
 
@@ -190,10 +225,14 @@ Each block scores from −2 to +2 and records `evidence[]` and `data_completenes
 Verified from the Income Tax Department's page (last reviewed 10 Nov 2026), https://www.incometaxindia.gov.in/sale-of-shares:
 - **STCG** (listed equity, STT paid, s.111A): **20%** for transfers on or after 23 July 2024 (15% before). [V]
 - **LTCG** (s.112A): **12.5% on gains above ₹1,25,000** for transfers on or after 23 July 2024 (10% above ₹1 lakh before). STT must be paid on transfer, and for shares, on acquisition too (with exceptions). [V]
-- **Holding period:** listed equity shares count as long-term after **12 months**. [V, via official notification search result https://www.incometaxindia.gov.in/documents/d/guest/notification_1_sft-pdf. Confirm in Q5.]
+- **Holding period:** listed equity shares count as long-term after **12 months**. [V, via official notification search result https://www.incometaxindia.gov.in/documents/d/guest/notification_1_sft-pdf. The wording comes from the search summary, not a full read.]
 - **Demat lots** follow **FIFO**. The date of transfer is the broker's note date. [V, same page]
-- **Income-tax Act, 2025** came into force on 1 April 2026 ([V] via search result for https://www.incometaxindia.gov.in/documents/d/guest/income_tax_act_2025_as_amended_by_fa_act_2026-pdf). The renumbered sections, and whether Finance Act 2026 changed the equity rates, are **[U]** (Q5). Rates live in a config file with a source URL, never in code.
-- Not verified: the 31 Jan 2018 grandfathering detail, loss set-off and carry-forward rules, and STT rates [U]. They are not used until verified.
+- **Income-tax Act, 2025** (in force 1 April 2026), verified in the browser 2026-11-14 [V]:
+  - **s.196**: STCG on an equity share where the sale "is chargeable to securities transaction tax" is taxed "at the rate of 20%" (https://www.incometaxindia.gov.in/w/section-196-76).
+  - **s.198**: LTCG on an equity share where STT has "been paid on acquisition and transfer" is taxed on "long-term capital gains exceeding Rs. 125000 at the rate of 12.5%" (https://wm.incometaxindia.gov.in/w/section-198-78). The page labels it "Income-tax Act, 2025", "Year 2026".
+  - So the rates carry over unchanged into the 2025 Act. Only the section numbers changed (111A → 196, 112A → 198).
+  - Rates live in `config/` with these URLs and an effective date, never in code.
+- **Still not verified** [U]: the 31 Jan 2018 cost grandfathering, loss set-off and carry-forward rules, and STT rates. The MVP shows **gross** gains per lot and the rate that applies. Loss set-off and grandfathered cost are added only after they are verified.
 
 **Engine behaviour [A]:**
 - For each SELL or TRIM, compute post-tax proceeds per FIFO lot.
@@ -247,10 +286,11 @@ From NSE [V] (https://www.nseindia.com/static/trade/platform-services-non-neat-d
 - "Client Direct API" retail algo documents: circular NSE/INVG/73992 (30 Apr 2026).
 - The orders-per-second threshold figure: **[U]**. Zerodha said in Feb 2025 that the exchange had not yet prescribed one [S].
 
-**Design consequences:**
-- The MVP **places no orders**.
-- In Phase 3, an optional "send order" sits behind an explicit per-order confirmation, at most a few orders a day. That is far below any OPS threshold [A], so no algo registration is needed. The user's broker API access will still need a **static IP** for order APIs (Q6).
-- MCP order tools stay disabled.
+**Design consequences (Q6: never place orders):**
+- The tool **places no orders in any phase**. There is no order code.
+- All MCP order and GTT tools are blocked by the client allowlist.
+- The user places every order in the broker's own app.
+- So the algo framework, the OPS threshold and the static IP requirement do not apply to this tool [A].
 
 ### 4.3 Market data redistribution
 
@@ -264,7 +304,7 @@ From NSE [V] (https://www.nseindia.com/static/trade/platform-services-non-neat-d
 - **No secrets in the repo:** `.env` (git-ignored) holds only non-secret config and key *references*. `.env.example` documents them.
 - **Secrets** (API secret, OAuth refresh tokens, 5paisa TOTP seed) go in the **macOS Keychain** via `keyring`. Cached tokens are encrypted at rest (AES-GCM/Fernet, with the key in the Keychain).
 - **MCP clients use a tool allowlist** (read tools only). Any order-capable tool is refused in code, and the refusal is logged.
-- **Append-only audit log** (`audit_event`): each signal with its evidence snapshot, each data sync, each user decision (accept, ignore, override) and each order request or confirmation. Kept for 5 years or more (matching Kite terms).
+- **Append-only audit log** (`audit_event`): each signal with its evidence snapshot, each data sync, each user decision (accept, ignore, override, or "acted manually in broker app"), and every blocked MCP order-tool call. Kept for 5 years or more (matching Kite terms).
 - The service binds to localhost only. There is no inbound exposure. Telegram alerts are outbound only.
 
 ---
@@ -315,8 +355,7 @@ flowchart LR
   SIG --> UI[Streamlit dashboard]
   SIG --> ALR[Telegram / email alerts]
   SIG --> OWN[Own MCP server for Claude]
-  UI -. user confirms .-> ORD[Order request - Phase 3, off by default]
-  ORD --> AUD
+  UI -. user acts manually in broker app .-> AUD
 ```
 
 ### 5.3 Folder structure
@@ -358,9 +397,9 @@ india-stock-analyzer/
 
 | Phase | Scope | Effort | Main risks |
 |---|---|---|---|
-| **MVP** | INDmoney MCP and Kite MCP read sync; CAS import; canonical holdings and FIFO lots; EOD prices for held stocks; fundamentals for held stocks from manual export or XBRL; blocks (c), (d), (e), plus (f) for timing; labels with "why"; thesis-break and valuation sell triggers; STCG/LTCG view; Streamlit portfolio page; audit log; daily Telegram digest. **No orders.** | 6–8 weeks | MCP OAuth may reject non-Claude clients (mitigation: Claude-mediated sync); fundamentals licensing; daily re-login friction |
-| **Phase 2** | 5paisa REST read; macro block (a) and sector block (b); events (g) from exchange announcements; peer comparison; portfolio caps and rebalancing; the better-opportunity trigger with tax; DCF ranges; paid fundamentals vendor if approved | 6–8 weeks | Vendor cost; peer classification quality; macro data gaps (crude) |
-| **Phase 3** | Point-in-time backtester and calibration; news sentiment (LLM summaries with citations); optional confirm-to-place GTT orders via Kite (static IP, per-order confirmation); own MCP server for Claude Q&A | 8–10 weeks | Point-in-time data availability; static IP setup; scope creep toward automation, which is disallowed by design |
+| **MVP** | INDmoney MCP and Kite MCP read sync; CAS import; canonical holdings and FIFO lots; EOD prices for holdings and watchlist via broker MCPs; import folder for manual fundamentals exports and exchange downloads; blocks (c), (d), (e), plus (f) for timing; labels with "why"; thesis-break, valuation and loss (20%) + weakening-fundamentals sell triggers; 10%/25% concentration flags; STCG/LTCG view (gross); Streamlit portfolio page; audit log; daily Telegram digest | 6–8 weeks | MCP OAuth may reject non-Claude clients (mitigation: Claude-mediated sync); manual import effort; daily re-login friction |
+| **Phase 2** | 5paisa MCP (wrapped, allowlisted); macro block (a) and sector block (b); events (g) from downloaded announcements; peer comparison; rebalancing; the better-opportunity trigger with tax; DCF ranges; loss set-off once verified | 6–8 weeks | 5paisa MCP credential handling; peer classification quality; macro data gaps (crude) |
+| **Phase 3** | Backtester on broker-supplied history and calibration; news sentiment (LLM summaries with citations); own MCP server for Claude Q&A; optional paid fundamentals vendor | 8–10 weeks | Point-in-time fundamentals history; NSE "simulation" restriction (use broker or vendor data only) |
 
 ---
 
@@ -378,13 +417,14 @@ india-stock-analyzer/
   - All scoring weights, thresholds and labels.
   - The stack choice and effort estimates.
   - That personal use needs no registration. This is a reading of the definitions, not legal advice.
-  - That confirmed orders stay below the OPS threshold.
+  - That manual user downloads of exchange files for personal analysis fall within NSE's "available for download" carve-out.
   - That CAS covers INDmoney holdings.
 - **Not verified:**
-  - NSE/BSE/niftyindices terms and data products.
+  - BSE terms (seen only via search) and exchange licensed data products.
   - The OPS threshold number.
   - The RA regulation text after 2024.
-  - Section numbers and rates under the Income-tax Act 2025.
+  - Loss set-off, grandfathering and STT under the Income-tax Act 2025. (s.196 and s.198 rates are verified.)
+  - niftyindices and RBI terms.
   - Grandfathering, loss set-off, STT.
   - Which tools the hosted Kite MCP exposes today.
   - INDmoney OAuth for non-Claude clients.
@@ -393,14 +433,22 @@ india-stock-analyzer/
 
 ## 7. Verdict: **GO-WITH-CONDITIONS**
 
-The tool is feasible for personal use with the MCP-first approach. Conditions before or during the MVP:
-1. **Spike (2–3 days):** confirm that a headless Python MCP client can complete OAuth with `mcp.indmoney.com` and `mcp.kite.trade` and call read tools. If not, adopt the Claude-mediated sync fallback.
-2. Verify the NSE/BSE data terms (Q3) before any automated bulk download of exchange data.
-3. Pick the fundamentals source: manual export (free, slower) or paid vendor (Q4).
-4. Verify the Income-tax Act 2025 section mapping and Finance Act 2026 rates (Q5) before enabling tax suggestions.
-5. Keep it personal: no sharing of signals, and no automatic orders.
+The tool is feasible for personal use with the MCP-first approach. Conditions, updated after the user's answers:
+1. **Spike (2–3 days):** confirm that a headless Python MCP client can complete OAuth with `mcp.indmoney.com` and `mcp.kite.trade` and call read tools. If not, adopt the Claude-mediated sync fallback. Also check whether the 5paisa MCP can take credentials without a plaintext `creds.json`.
+2. **No automated access to NSE or BSE websites** (verified NSE terms). Exchange data comes in only through manual downloads.
+3. Tax suggestions use only verified rules (s.196/s.198). Loss set-off and grandfathering stay off until verified.
+4. Keep it personal: no sharing of signals, and no orders in any phase.
 
 ## 8. Open questions for the user
+
+**All ten were answered on 2026-11-14.** The answers are in the table at the top of this report. The original questions are kept below for the record.
+
+**Still open (to settle in the spike, not user decisions):**
+- Do the hosted MCPs accept a non-Claude OAuth client?
+- Which tools does the hosted Kite MCP expose today?
+- Can the 5paisa MCP take credentials without a plain file?
+- niftyindices and RBI terms.
+- Loss set-off, grandfathering and STT rules.
 
 1. **Q1. Legal comfort:** are you OK relying on "personal use is outside IA/RA" without a lawyer's opinion? Will you ever want to share signals, even with family? (Sharing would need RA/IA review.)
 2. **Q2. Kite plan:** stay on free Personal plus MCP, or pay ₹500/mo for Connect (historical candles and WebSocket)?

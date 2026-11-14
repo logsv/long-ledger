@@ -9,7 +9,8 @@ A **personal-use** tool for analysing and getting recommendations on Indian equi
 - Pull portfolio records from **Zerodha Kite, INDmoney and 5paisa**. This uses each broker's official MCP server first, with REST APIs and CAS/CSV imports as fallbacks.
 - Score each holding and watchlist stock with an **explainable engine**: macro, sector, fundamentals, governance, valuation, events, and technicals (used for timing only).
 - Output BUY / ACCUMULATE / HOLD / TRIM / SELL with a confidence score, a plain-language "why", sell triggers, a portfolio view and tax-aware (STCG/LTCG) suggestions.
-- **Never place orders automatically.** The MVP places no orders at all.
+- **Analysis only: the tool never places orders.** You place every order yourself in the broker app.
+- No automated access to NSE or BSE websites (NSE terms prohibit it). Exchange files are downloaded by hand into an import folder.
 
 ## Planned stack
 
