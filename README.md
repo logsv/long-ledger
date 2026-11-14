@@ -14,15 +14,16 @@ A **personal-use** tool for analysing and getting recommendations on Indian equi
 
 ## Planned stack
 
-Python 3.12 (uv) · official `mcp` SDK client · PostgreSQL 16 + TimescaleDB · APScheduler · FastAPI (localhost) · Streamlit · Telegram/email alerts · secrets in the macOS Keychain.
+**Claude Code workspace** (`CLAUDE.md`, slash commands, a skill, read-only subagents, broker MCPs in `.mcp.json`) over a **deterministic Python 3.12 core** (uv) with **SQLite** and a generated **HTML report**. Phase 2 adds headless daily runs through the **Claude Agent SDK** + launchd, with Telegram alerts. Secrets live in the macOS Keychain. Code decides every label; Claude fetches, extracts and explains.
 
 ## How it will run (planned)
 
-1. `docker compose up db` starts Postgres/TimescaleDB locally.
-2. Copy `.env.example` to `.env`. Store broker secrets in the Keychain, not in `.env`.
-3. Once a day, log in to each broker (Kite tokens expire at 06:00 and 5paisa tokens at 23:59).
-4. The scheduler syncs holdings after market close, refreshes data, recomputes signals and sends a Telegram digest.
-5. Review signals in the Streamlit dashboard. Every signal and every decision you make is written to the audit log.
+1. Open the repo in Claude Code. Sign in to the INDmoney and Kite MCPs once a day (the brokers expire sessions daily).
+2. `/sync` pulls holdings, positions and trades through the broker MCPs (read tools only) into `data/isa.db`.
+3. Drop manual downloads (CAS, tradebooks, NSE/BSE files, Screener/Tijori exports, annual reports) into `data/imports/` and run `/import`.
+4. `/portfolio` runs the scoring engine and shows each holding's label, confidence, "why", sell triggers and tax view. `/analyze <stock>`, `/sell-review`, `/thesis <stock>` and `/report` cover the rest.
+5. Every signal and every decision you record is written to the audit log. You place any order yourself in the broker app.
+6. Phase 2: a launchd job runs `/sync` → `/portfolio` headlessly after market close and sends a Telegram digest.
 
 ## Boundaries
 

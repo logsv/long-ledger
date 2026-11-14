@@ -39,3 +39,6 @@ build/
 .DS_Store
 .idea/
 .vscode/
+
+# Claude Code local overrides
+.claude/settings.local.json

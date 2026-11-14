@@ -108,7 +108,7 @@ The fallbacks follow one design rule: **every connector writes the same canonica
 1. **CDSL/NSDL Consolidated Account Statement (CAS) PDF import**: one statement covers all demat accounts. It is the reconciliation "source of truth" for quantities across brokers. [A; the CAS format still needs a spike]
 2. **Broker tradebook or P&L CSV import** (Kite Console, 5paisa, INDmoney): gives buy dates and prices for FIFO tax lots. [A; the export paths for INDmoney were not verified, U]
 3. **Contract-note PDF parsing**: the last resort for trade dates and prices.
-4. **Claude-mediated sync**: if a hosted MCP rejects a non-Claude OAuth client, the user runs a "sync" prompt in Claude Code. Claude reads the broker MCP and writes the records into this tool through the tool's own MCP server (`import_holdings`). [A]
+4. **Claude Code sync** is now the *primary* path (adopted workspace plan, §5): `/sync` reads the broker MCPs inside Claude Code and passes the JSON to `tools/import_records.py`. The items above remain fallbacks.
 
 ### 1.5 Comparison and integration order
 
@@ -302,104 +302,114 @@ From NSE [V] (https://www.nseindia.com/static/trade/platform-services-non-neat-d
 ### 4.4 Security design [A]
 
 - **No secrets in the repo:** `.env` (git-ignored) holds only non-secret config and key *references*. `.env.example` documents them.
-- **Secrets** (API secret, OAuth refresh tokens, 5paisa TOTP seed) go in the **macOS Keychain** via `keyring`. Cached tokens are encrypted at rest (AES-GCM/Fernet, with the key in the Keychain).
-- **MCP clients use a tool allowlist** (read tools only). Any order-capable tool is refused in code, and the refusal is logged.
+- **Secrets** (5paisa TOTP seed and PIN, Telegram bot token, any API keys) go in the **macOS Keychain** via `keyring`. Sign-ins to the hosted INDmoney and Kite MCPs are held by Claude Code itself; the tool never sees those tokens.
+- **Order tools are blocked in layers** (§5.3): the `settings.json` deny-list, a CI guard, the 5paisa wrapper filter, and in Phase 2 an Agent SDK hook. `settings.json` also denies reading `.env`, as in ai-job-search.
 - **Append-only audit log** (`audit_event`): each signal with its evidence snapshot, each data sync, each user decision (accept, ignore, override, or "acted manually in broker app"), and every blocked MCP order-tool call. Kept for 5 years or more (matching Kite terms).
-- The service binds to localhost only. There is no inbound exposure. Telegram alerts are outbound only.
+- No server listens on the network. The report is a local HTML file. Telegram alerts (Phase 2) are outbound only.
 
 ---
 
 ## 5. Phase 5: Stack and plan
 
-### 5.1 Recommended stack [A]
+**Adopted 2026-11-14 (user: "Adopt workspace plan").** The tool is a **Claude Code workspace with a deterministic Python core** (Option B), with headless runs through the **Claude Agent SDK** in Phase 2 (Option C). The full comparison of five options is in `IMPLEMENTATION_OPTIONS.md`. The earlier stack (FastAPI, Postgres/Timescale, APScheduler, Streamlit) is superseded and appears only as "Option A" in that file.
+
+### 5.1 Stack [A]
 
 | Layer | Choice | Why |
 |---|---|---|
-| Language | **Python 3.12** with `uv` | Official SDKs (pykiteconnect, py5paisa), the official `mcp` Python SDK (client side), pandas, statsmodels, and the user's primary language |
-| Broker access | `mcp` SDK client (streamable HTTP plus OAuth) and REST SDKs as fallback | Follows the MCP-first direction |
-| Storage | **PostgreSQL 16 + TimescaleDB** (prices as a hypertable), in Docker | One database for relational and time-series data. The user knows Postgres well. |
-| Analytics cache | Parquet + DuckDB for backtests | Fast columnar scans, no server load |
-| Scheduler | **APScheduler** inside the service (cron triggers, IST) | Single process, no broker queue needed for daily jobs |
-| API | FastAPI (localhost) | A thin layer for the UI and the tool's own MCP server |
-| UI (MVP) | **Streamlit** | Fastest way to build a usable dashboard for one user |
-| Alerts | **Telegram Bot** (primary), SMTP email (digest) | Push to phone; bot is outbound only |
-| Own MCP server | Exposes `get_signal`, `explain`, `import_holdings` to Claude | Enables the Claude-mediated sync fallback and Q&A |
+| Runtime / interface (MVP) | **Claude Code** (desktop or CLI): `CLAUDE.md`, slash commands, a skill, read-only subagents | Same pattern as ai-job-search. Broker MCPs work in Claude Code without extra setup, which removes the non-Claude OAuth risk. |
+| Broker access | Broker MCPs configured in `.mcp.json`: INDmoney and Kite hosted (http), 5paisa local (stdio, launched by a Keychain wrapper) | MCP-first direction (D-02) |
+| Core | **Python 3.12** package `isa` (uv), called as thin CLIs in `tools/*.py` | All scoring, labels, triggers, tax and portfolio maths are deterministic and testable |
+| Storage | **SQLite** (`data/isa.db`) | One user, holdings and watchlist universe (Q8). No server. Supports audit queries. |
+| Backtest cache | Parquet + DuckDB (Phase 3) | Columnar scans over broker-supplied history |
+| UI | Generated self-contained **HTML report** (`/report`), like ai-job-search's `/html-report` | No framework to run |
+| Scheduling (Phase 2) | **launchd** on the Mac, running a **Claude Agent SDK** script that executes `/sync` → `/portfolio` headlessly | Unattended daily digest, reusing the same commands |
+| Alerts (Phase 2) | Telegram bot (outbound only), email digest | Push to phone |
+| LLM use | Opus 5.5 for the main session; Sonnet 5.5 or Haiku 5.5 for extraction and tagging subagents (user choice) | See `IMPLEMENTATION_OPTIONS.md` §4.4 |
 
-**Alternative A: TypeScript (Node 22) + Next.js + Postgres.** Good UI and a mature MCP TS SDK. But the quant and data tooling is weaker, and py5paisa and pykiteconnect are Python-first.
-**Alternative B: Python + DuckDB/Parquet only, with Marimo notebooks.** No server and the least operations work. But scheduling, alerts and the audit trail are weaker, and concurrent writes are awkward.
-**Pick:** the recommended stack balances fast delivery with a durable audit trail.
+**Rule:** Claude never decides a label. Code computes scores, labels and triggers. Claude fetches records, extracts facts from downloaded PDFs (stored with page references and `extracted_by=llm` until confirmed), writes the "why" from the code's evidence only, and answers questions.
 
 ### 5.2 Architecture
 
 ```mermaid
 flowchart LR
-  subgraph Brokers
-    K[Kite MCP / Kite Connect]
-    I[INDmoney MCP]
-    F[5paisa Xstream REST]
-    C[CAS / CSV / contract notes]
+  subgraph Brokers[Broker MCPs - read tools only]
+    I[INDmoney MCP - hosted]
+    K[Kite MCP - hosted]
+    F[5paisa MCP - local, Keychain wrapper]
   end
-  subgraph Public[Public data]
-    N[NSE/BSE filings and bhavcopy]
-    X[niftyindices]
-    R[RBI rates and INR]
-    V[Paid vendor - later]
+  subgraph Manual[Manual downloads - data/imports]
+    C[CAS / tradebook CSV]
+    N[NSE/BSE files]
+    E[Screener/Tijori exports]
+    P[Annual reports / results PDFs]
   end
-  K & I & F & C --> CON[Connectors - read-only allowlist]
-  N & X & R & V --> ING[Ingestion jobs - APScheduler]
-  CON --> ING
-  ING --> DB[(Postgres + TimescaleDB)]
-  DB --> ENG[Analysis engine: macro, sector, fundamentals, governance, valuation, technicals, events]
-  ENG --> SIG[Signals + why + sell triggers + tax view]
-  SIG --> AUD[(Audit log)]
-  SIG --> UI[Streamlit dashboard]
-  SIG --> ALR[Telegram / email alerts]
-  SIG --> OWN[Own MCP server for Claude]
-  UI -. user acts manually in broker app .-> AUD
+  R[RBI rates and INR]
+  subgraph CC[Claude Code workspace]
+    CMD[/sync /import /analyze /portfolio /sell-review /thesis /report/]
+    SUB[Subagents: filing-reader, governance-checker, news-summarizer]
+  end
+  subgraph Core[isa core - deterministic Python]
+    IMP[Importers + reconcile]
+    DB[(SQLite)]
+    ENG[Engine: macro, sector, fundamentals, governance, valuation, technicals, events]
+    OUT[Labels + evidence + sell triggers + tax view + portfolio caps]
+    AUD[(Audit log)]
+  end
+  I & K & F --> CMD
+  C & N & E --> IMP
+  P --> SUB --> IMP
+  R --> IMP
+  CMD --> IMP --> DB --> ENG --> OUT --> AUD
+  OUT --> CMD
+  OUT --> REP[HTML report]
+  OUT -. Phase 2 .-> TG[Telegram digest via Agent SDK + launchd]
+  CMD -. user acts manually in broker app .-> AUD
 ```
 
 ### 5.3 Folder structure
 
 ```
 india-stock-analyzer/
-├── README.md
-├── .env.example
-├── .gitignore
-├── docs/                    FEASIBILITY_AND_DESIGN.md, DECISIONS.md
-├── config/                  scoring weights, tax rates (with source URLs), thresholds
-├── src/isa/
-│   ├── connectors/
-│   │   ├── mcp/             generic MCP client + tool allowlist
-│   │   ├── kite/
-│   │   ├── fivepaisa/
-│   │   ├── indmoney/
-│   │   └── imports/         CAS, CSV, contract notes
-│   ├── ingestion/           scheduled jobs, public-data fetchers
-│   ├── storage/             schema, migrations
-│   ├── engine/
-│   │   ├── macro/  sector/  fundamentals/  governance/
-│   │   ├── valuation/  technicals/  events/
-│   │   └── scoring/         composite, labels, explanations, sell triggers
-│   ├── portfolio/           concentration, sizing, rebalancing
-│   ├── tax/                 FIFO lots, STCG/LTCG
+├── CLAUDE.md                     investor profile, rules (no orders, personal use), verification checklist
+├── .mcp.json                     indmoney + kite (hosted, http); 5paisa (local, stdio via tools/mcp_wrap_5paisa.py)
+├── .claude/
+│   ├── settings.json             allow tools/*.py and broker READ tools; DENY order/GTT tools, .env, Keychain dumps
+│   ├── commands/                 sync, import, analyze, portfolio, sell-review, thesis, report
+│   ├── skills/stock-analysis/    SKILL.md + 01-investor-profile … 06-data-trust-boundary
+│   └── agents/                   filing-reader, governance-checker, news-summarizer (read-only)
+├── src/isa/                      deterministic core
+│   ├── importers/                MCP JSON, CAS, CSV, exchange files, extracted facts
+│   ├── storage/                  SQLite schema, migrations
+│   ├── engine/                   macro/ sector/ fundamentals/ governance/ valuation/ technicals/ events/ scoring/
+│   ├── portfolio/                concentration, sizing, rebalancing
+│   ├── tax/                      FIFO lots, s.196/s.198
 │   ├── backtest/
-│   ├── alerts/
-│   ├── audit/
-│   ├── security/            keychain, token encryption
-│   ├── mcp_server/          the tool's own MCP server
-│   └── ui/
-├── tests/
-├── scripts/
-└── data/                    git-ignored local cache
+│   ├── report/                   HTML report builder
+│   └── audit/
+├── tools/                        thin CLIs: import_records, reconcile, score, tax_view, report,
+│                                 security_guards, mcp_wrap_5paisa
+├── config/                       weights.yaml, thresholds.yaml, tax.yaml (with source URLs)
+├── data/                         git-ignored: isa.db, imports/
+├── tests/                        golden tests per factor and label; security guard tests
+├── scripts/launchd/              Phase 2: plist + Agent SDK runner
+└── docs/
 ```
+
+**Order safety, in layers:**
+1. `settings.json` denies every broker order or GTT tool by name.
+2. `tools/security_guards.py` fails CI if any of them is allowed.
+3. The 5paisa wrapper filters the server's tool list down to read tools.
+4. Phase 2: an Agent SDK PreToolUse hook blocks any tool matching `order|gtt`.
 
 ### 5.4 Roadmap [A, part-time effort estimates]
 
 | Phase | Scope | Effort | Main risks |
 |---|---|---|---|
-| **MVP** | INDmoney MCP and Kite MCP read sync; CAS import; canonical holdings and FIFO lots; EOD prices for holdings and watchlist via broker MCPs; import folder for manual fundamentals exports and exchange downloads; blocks (c), (d), (e), plus (f) for timing; labels with "why"; thesis-break, valuation and loss (20%) + weakening-fundamentals sell triggers; 10%/25% concentration flags; STCG/LTCG view (gross); Streamlit portfolio page; audit log; daily Telegram digest | 6–8 weeks | MCP OAuth may reject non-Claude clients (mitigation: Claude-mediated sync); manual import effort; daily re-login friction |
-| **Phase 2** | 5paisa MCP (wrapped, allowlisted); macro block (a) and sector block (b); events (g) from downloaded announcements; peer comparison; rebalancing; the better-opportunity trigger with tax; DCF ranges; loss set-off once verified | 6–8 weeks | 5paisa MCP credential handling; peer classification quality; macro data gaps (crude) |
-| **Phase 3** | Backtester on broker-supplied history and calibration; news sentiment (LLM summaries with citations); own MCP server for Claude Q&A; optional paid fundamentals vendor | 8–10 weeks | Point-in-time fundamentals history; NSE "simulation" restriction (use broker or vendor data only) |
+| **Spike** | In Claude Code: connect the INDmoney and Kite MCPs and list their tools (exact order/GTT names for the deny-list); test the 5paisa wrapper with Keychain credentials | 2 days | Hosted Kite tool set; 5paisa may require `creds.json` |
+| **MVP** | `CLAUDE.md`, skill, 7 commands, 3 subagents, settings and guards; `/sync` from INDmoney and Kite; CAS and CSV import; SQLite schema; FIFO lots; prices for holdings and watchlist via MCP; import folder; blocks (c), (d), (e), plus (f) for timing; labels with "why"; thesis-break, valuation and 20%-loss + weakening-fundamentals triggers; 10%/25% caps; STCG/LTCG view (gross); HTML report; audit log | 5–6 weeks | Manual import effort; daily broker re-login; LLM extraction errors (mitigated by page references and user confirmation) |
+| **Phase 2** | 5paisa MCP; Agent SDK + launchd daily run and Telegram digest; macro block (a) and sector block (b); events (g) from downloaded announcements; peer comparison; rebalancing; better-opportunity trigger with tax; DCF ranges; loss set-off once verified | 5–6 weeks | Headless MCP auth reuse in the Agent SDK [U]; API token cost; macro data gaps (crude) |
+| **Phase 3** | Backtester on broker-supplied history and calibration; news sentiment with citations; own MCP server for richer Q&A; optional paid fundamentals vendor | 6–8 weeks | Point-in-time fundamentals history; NSE "simulation" restriction |
 
 ---
 
@@ -425,16 +435,15 @@ india-stock-analyzer/
   - The RA regulation text after 2024.
   - Loss set-off, grandfathering and STT under the Income-tax Act 2025. (s.196 and s.198 rates are verified.)
   - niftyindices and RBI terms.
-  - Grandfathering, loss set-off, STT.
   - Which tools the hosted Kite MCP exposes today.
-  - INDmoney OAuth for non-Claude clients.
+  - Whether Agent SDK headless runs can reuse Claude Code's MCP sign-ins (Phase 2 only).
   - 5paisa terms and static IP rules.
   - Vendor prices.
 
 ## 7. Verdict: **GO-WITH-CONDITIONS**
 
 The tool is feasible for personal use with the MCP-first approach. Conditions, updated after the user's answers:
-1. **Spike (2–3 days):** confirm that a headless Python MCP client can complete OAuth with `mcp.indmoney.com` and `mcp.kite.trade` and call read tools. If not, adopt the Claude-mediated sync fallback. Also check whether the 5paisa MCP can take credentials without a plaintext `creds.json`.
+1. **Spike (2 days, in Claude Code):** connect the INDmoney and Kite MCPs, list their exact order and GTT tool names for the deny-list, and check whether the 5paisa MCP can run with Keychain credentials instead of a plaintext `creds.json`. (With the adopted workspace plan, the non-Claude OAuth risk is gone for the MVP. It returns only for Phase 2 headless runs.)
 2. **No automated access to NSE or BSE websites** (verified NSE terms). Exchange data comes in only through manual downloads.
 3. Tax suggestions use only verified rules (s.196/s.198). Loss set-off and grandfathering stay off until verified.
 4. Keep it personal: no sharing of signals, and no orders in any phase.
@@ -444,7 +453,7 @@ The tool is feasible for personal use with the MCP-first approach. Conditions, u
 **All ten were answered on 2026-11-14.** The answers are in the table at the top of this report. The original questions are kept below for the record.
 
 **Still open (to settle in the spike, not user decisions):**
-- Do the hosted MCPs accept a non-Claude OAuth client?
+- Phase 2 only: can Agent SDK headless runs reuse Claude Code's MCP sign-ins?
 - Which tools does the hosted Kite MCP expose today?
 - Can the 5paisa MCP take credentials without a plain file?
 - niftyindices and RBI terms.
