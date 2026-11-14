@@ -2,7 +2,7 @@
 
 A **personal-use** tool for analysing and getting recommendations on Indian equities (NSE/BSE), built for a long-term investor. It never does intraday trading.
 
-**Status:** design stage. No feature code yet. Read `docs/FEASIBILITY_AND_DESIGN.md`, `docs/DECISIONS.md` and `docs/IMPLEMENTATION_OPTIONS.md`. The last one compares five ways to build this and recommends a Claude Code workspace with a deterministic Python core; that choice is awaiting approval.
+**Status:** design stage, no feature code yet. The full plan, with cited research, is in `docs/WORKSPACE_PLAN.md`.
 
 ## Goal
 
@@ -14,7 +14,7 @@ A **personal-use** tool for analysing and getting recommendations on Indian equi
 
 ## Planned stack
 
-**Claude Code workspace** (`CLAUDE.md`, slash commands, a skill, read-only subagents, broker MCPs in `.mcp.json`) over a **deterministic Python 3.12 core** (uv) with **SQLite** and a generated **HTML report**. Phase 2 adds headless daily runs through the **Claude Agent SDK** + launchd, with Telegram alerts. Secrets live in the macOS Keychain. Code decides every label; Claude fetches, extracts and explains.
+**Claude Code workspace** (`CLAUDE.md`, slash commands, a skill, read-only subagents, broker MCPs in `.mcp.json`) over a **deterministic Python 3.12 core** (uv) with **SQLite** and a generated **HTML report**. Secrets live in the macOS Keychain. Code decides every label; Claude fetches, extracts and explains.
 
 ## How it will run (planned)
 
@@ -23,7 +23,7 @@ A **personal-use** tool for analysing and getting recommendations on Indian equi
 3. Drop manual downloads (CAS, tradebooks, NSE/BSE files, Screener/Tijori exports, annual reports) into `data/imports/` and run `/import`.
 4. `/portfolio` runs the scoring engine and shows each holding's label, confidence, "why", sell triggers and tax view. `/analyze <stock>`, `/sell-review`, `/thesis <stock>` and `/report` cover the rest.
 5. Every signal and every decision you record is written to the audit log. You place any order yourself in the broker app.
-6. Phase 2: a launchd job runs `/sync` → `/portfolio` headlessly after market close and sends a Telegram digest.
+6. Everything runs inside a Claude Code session you start. There are no scheduled runs or push alerts.
 
 ## Boundaries
 
