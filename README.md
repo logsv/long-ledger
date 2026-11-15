@@ -71,7 +71,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 
 ## Status
 
-Version 0.6.0.
+Version 0.6.1.
 
 | Area | Status |
 |---|---|
@@ -98,7 +98,7 @@ Version 0.6.0.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 55 tests
+python3 -m unittest discover -s tests  # 57 tests
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 

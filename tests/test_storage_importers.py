@@ -92,3 +92,12 @@ class FactImportTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColumnNameTest(unittest.TestCase):
+    def test_pick_ignores_case_spaces_underscores(self):
+        from isa.importers.common import pick
+        row = {"Trade ID": "1", "Trade Type": "buy"}
+        self.assertEqual(pick(row, ("trade_id",)), "1")
+        self.assertEqual(pick(row, ("trade_type",)), "buy")
+        self.assertIsNone(pick(row, ("order_id",)))

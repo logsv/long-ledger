@@ -73,11 +73,16 @@ def parse_number(value: Any) -> float | None:
         raise ImportError_(f"not a number: {value!r}") from exc
 
 
+def _key(k: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(k).lower())
+
+
 def pick(row: dict, aliases: Iterable[str]) -> Any:
-    """First non-empty value among aliases (case-insensitive keys)."""
-    lowered = {str(k).lower(): v for k, v in row.items()}
+    """First non-empty value among aliases. Keys match ignoring case, spaces and underscores,
+    so 'Trade ID', 'trade_id' and 'TradeID' are the same column."""
+    norm = {_key(k): v for k, v in row.items()}
     for key in aliases:
-        v = lowered.get(key.lower())
+        v = norm.get(_key(key))
         if v not in (None, ""):
             return v
     return None
