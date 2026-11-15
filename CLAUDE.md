@@ -43,6 +43,7 @@ This repo is a personal stock-analysis workspace for one long-term investor in I
 | `/analyze <SYMBOL>` | Full breakdown for one stock |
 | `/sell-review` | Holdings with sell triggers, plus tax impact |
 | `/thesis <SYMBOL>` | Write or review the checkable thesis conditions for a stock |
+| `python3 tools/isa.py serve` | The user's local dashboard on http://127.0.0.1:8770 (filters and buttons). Suggest it for browsing holdings, trades and lots |
 | `/report` | Generate the HTML portfolio report |
 
 Domain knowledge lives in `.claude/skills/stock-analysis/`. Read `06-data-trust-boundary.md` before handling any fetched or imported content.

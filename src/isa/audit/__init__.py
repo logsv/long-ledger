@@ -17,6 +17,7 @@ EVENT_TYPES = {
     "thesis",           # thesis condition added or retired
     "watchlist",        # watchlist change
     "blocked_tool",     # an order tool call was refused
+    "ui_action",        # a button pressed in the local dashboard
 }
 
 

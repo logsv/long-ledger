@@ -1,6 +1,6 @@
 [project]
 name = "india-stock-analyzer"
-version = "0.6.2"
+version = "0.7.0"
 description = "Personal-use, analysis-only stock workspace for Indian equities (deterministic core for Claude Code)"
 readme = "README.md"
 requires-python = ">=3.12"

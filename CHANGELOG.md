@@ -2,6 +2,23 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-11-15
+
+### Added
+- **Local dashboard** (`python3 tools/isa.py serve`, http://127.0.0.1:8770).
+  - Built from a standard-library server and Tabulator 6.3.1 (MIT), stored locally after downloading it with bun.
+  - **Tabs:** Overview, Holdings, Trades, Tax lots, Data quality.
+  - **Tables:** column filters, search, quick filters, grouping with subtotals, CSV export, and click-through from a holding to its trades and lots.
+  - **Buttons:** Refresh, Recompute signals, Export HTML report, 5paisa sync.
+- **Security:**
+  - loopback-only binding and Host-header check
+  - read-only data views
+  - a per-run action token and Origin check
+  - a strict CSP
+  - `ui_action` audit events
+  - a new `security_guards.py` check
+- 8 server tests (66 in total).
+
 ## [0.6.2] - 2026-11-15
 
 ### Added

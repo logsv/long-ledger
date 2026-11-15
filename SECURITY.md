@@ -32,6 +32,16 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
   - `fivepaisa status` never prints secrets.
   - The client refuses any endpoint not on its read-only allowlist, and the guard checks that allowlist.
 
+## Local dashboard
+
+`python3 tools/isa.py serve` starts an HTTP server for your own browser:
+- **Listens on 127.0.0.1 only.** Requests with any Host other than `127.0.0.1:<port>` or `localhost:<port>` are refused. This blocks DNS-rebinding pages.
+- **Data views open the database read-only.**
+- **Buttons need a token** generated at startup and embedded in the page, plus a same-origin request. Other websites can't trigger them.
+- **The only actions** are refresh, recompute, report and 5paisa sync. There are no order actions; `security_guards.py` checks this, and checks that the server binds only to 127.0.0.1.
+- **Every action is written to the audit log** as `ui_action`.
+- **A strict Content-Security-Policy** means only the server's own scripts run. Tabulator is stored locally, so nothing loads from the internet.
+
 ## Web research
 
 - `/research` uses web search and fetch **only to read companies' own websites**.

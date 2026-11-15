@@ -82,7 +82,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 
 ## Status
 
-Version 0.6.2.
+Version 0.7.0.
 
 | Area | Status |
 |---|---|
@@ -111,7 +111,7 @@ Version 0.6.2.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 58 tests
+python3 -m unittest discover -s tests  # 66 tests
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -158,6 +158,43 @@ Kite and 5paisa sessions expire every day, which is a regulatory requirement, so
 Company data changes quarterly, not daily. Run **`/research`** once for your top holdings (`--top 20`), then `/research --refresh` after each results season.
 
 Run `/sync` on every trading day you trade. The APIs only return that day's trades, and a missed day shows up as a reconciliation warning.
+
+## Local dashboard
+
+```bash
+python3 tools/isa.py serve        # opens http://127.0.0.1:8770 (add --no-browser, --port N)
+```
+
+A live view of the database in your browser:
+
+| Tab | What it shows |
+|---|---|
+| **Overview** | Value, market regime, allocation, limits, broker sync dates, what needs attention, sector indices |
+| **Holdings** | Every stock with company name, brokers and quantities, value, weight, P&L, asset class, market cap, label, flags, trend and company-data state. Click a row to see its trades and lots |
+| **Trades** | All trades, with broker, side, source and date-range filters |
+| **Tax lots** | Lot type, buy date, term, wait date, estimated tax. There's a "turns long-term within 30 days" filter |
+| **Data quality** | Reconciliation, sells with no earlier buy, facts awaiting confirmation |
+
+**In every table:**
+- column header filters, a search box and quick filters
+- grouping (by asset class, sector, broker, stock, month and more) with subtotals
+- sortable, movable columns, and CSV download of the filtered rows
+
+**Buttons:**
+- **Refresh data**
+- **Recompute signals** (stored and audited)
+- **Export HTML report**
+- **5paisa sync**, which needs today's `fivepaisa login`
+
+Kite and INDmoney sync still runs through `/sync` in Claude Code.
+
+It is built from the Python standard library plus [Tabulator](https://tabulator.info) 6.3.1 (MIT). Tabulator is stored in `src/isa/web/static/vendor/`, so the page needs no internet.
+
+**Safety:**
+- listens on 127.0.0.1 only, and rejects other Host headers
+- data views read the database read-only
+- buttons need a per-run token and a same-origin request
+- no order actions exist, and the safety guard checks this
 
 ## Slash commands
 
@@ -230,6 +267,8 @@ src/isa/
   engine/                 market regime, monitor flags, technicals, fundamentals, governance, valuation, scoring
   tax/  portfolio/        FIFO lots and STCG/LTCG; allocation, limits, reconciliation
   report/  audit/         HTML report; hash-chained audit log
+  web/                    local dashboard: stdlib server (server.py), JSON views (api.py),
+                          static UI (index.html, app.js, app.css, vendor/tabulator)
 tools/                    isa.py (CLI), security_guards.py
 tests/                    unit and end-to-end tests (synthetic data only)
 data/                     git-ignored: isa.db, imports/, reports/
