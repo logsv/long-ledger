@@ -147,7 +147,7 @@ def reconcile(conn: sqlite3.Connection, book: LotBook) -> list[dict]:
         lot_qty[(lot.account, lot.symbol)] += lot.quantity
     snap_qty = {(r["source"], r["symbol"]): r["quantity"] for r in latest_snapshots(conn)}
     synced_sources = {k[0] for k in snap_qty}
-    traded_accounts = {k[0] for k in lot_qty}
+    traded_accounts = {r[0] for r in conn.execute("SELECT DISTINCT account FROM trade")}
     issues = []
     for key in sorted(set(snap_qty) | set(lot_qty)):
         account, sym = key
@@ -158,9 +158,17 @@ def reconcile(conn: sqlite3.Connection, book: LotBook) -> list[dict]:
             issues.append({"account": account, "symbol": sym, "broker_quantity": s,
                            "lot_quantity": l_,
                            "hint": "import missing trades (older tradebook) or a corporate action"})
-    lots_missing = sorted({k[0] for k in snap_qty} - traded_accounts)
-    for account in lots_missing:
-        issues.append({"account": account, "symbol": None, "broker_quantity": None,
-                       "lot_quantity": None,
-                       "hint": "no trades imported for this broker: tax view needs its tradebook"})
+    starts = {r[0]: r[1] for r in conn.execute("SELECT account, MIN(trade_date) FROM trade GROUP BY account")}
+    est: dict[str, int] = defaultdict(int)
+    for lot in book.open_lots:
+        if lot.estimated:
+            est[lot.account] += 1
+    for account in sorted(synced_sources):
+        if account not in traded_accounts:
+            issues.append({"account": account, "symbol": None, "broker_quantity": None, "lot_quantity": None,
+                           "hint": "no trades imported: buy dates unknown for all its holdings (import its tradebook)"})
+        elif est.get(account):
+            issues.append({"account": account, "symbol": None, "broker_quantity": None, "lot_quantity": None,
+                           "hint": f"{est[account]} holdings include shares bought before {starts[account]}, the earliest "
+                                   "imported trade: their buy dates are estimated (import older tradebooks)"})
     return issues

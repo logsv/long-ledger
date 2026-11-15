@@ -67,6 +67,11 @@ def render(run: dict) -> str:
     out.append(f"<div class='card kpi'><span class='muted'>Portfolio value</span><b>₹{_n(pv['total_value'])}</b></div>")
     out.append(f"<div class='card kpi'><span class='muted'>Holdings</span><b>{len(pv['holdings'])}</b></div>")
     out.append(f"<div class='card kpi'><span class='muted'>Top-5 weight</span><b>{_n(pv['top5_weight'], pct=True)}</b></div>")
+    cov = run.get("coverage") or {}
+    weights = {h["symbol"]: h.get("weight") or 0 for h in pv["holdings"]}
+    full = [s for s, c in cov.items() if c["state"] == "full"]
+    out.append(f"<div class='card kpi'><span class='muted'>Company data</span><b>{len(full)} of {len(cov)}</b>"
+               f"<span class='muted'>{_n(sum(weights.get(s, 0) for s in full), pct=True)} of value</span></div>")
     if monitoring:
         out.append(f"<div class='card kpi'><span class='muted'>Flagged holdings</span><b>{flagged} of {len(held_flags)}</b></div></div>")
     else:
@@ -85,12 +90,18 @@ def render(run: dict) -> str:
                       "(asset class / market cap): run /sync")
     if run["pending_facts"]:
         alerts.append(f"{run['pending_facts']} extracted facts await your confirmation (/import)")
+    um = tax.get("unmatched_sells") or []
+    if um:
+        syms = sorted({u["symbol"] for u in um})
+        alerts.append(f"{len(um)} sells ({len(syms)} stocks) have no earlier buy in the imported history, usually "
+                      f"stocks bought before your oldest tradebook: realised gains for them are incomplete")
     if alerts:
         out.append("<div class='card warn'><b>Needs attention</b>" + _list(alerts) + "</div>")
     if monitoring:
-        out.append("<div class='card'><b>Monitoring mode.</b> Your brokers provide no company data (financials, "
-                   "valuation, shareholding), so BUY/SELL labels are off. Holdings below are sorted by risk flags; "
-                   "flags are prompts to review, not sell signals.</div>")
+        out.append("<div class='card'><b>Monitoring mode.</b> No holding has confirmed company data yet, so BUY/SELL "
+                   "labels are off. Run <code>/research</code> (top holdings, or by symbol or company name) to fill "
+                   "it from companies' own websites. Holdings below are sorted by risk flags; flags are prompts to "
+                   "review, not sell signals.</div>")
 
     mk = run.get("market") or {}
     if mk:
@@ -128,15 +139,15 @@ def render(run: dict) -> str:
     holdings = sorted(pv["holdings"], key=lambda h: (-len(held_flags.get(h["symbol"], [])), -(h.get("weight") or 0)))
     if monitoring:
         out.append("<div class='wrap'><table><tr><th>Stock</th><th class='num'>Value</th><th class='num'>Weight</th>"
-                   "<th class='num'>P&amp;L</th><th>Status</th><th>Flags</th><th>Trend</th></tr>")
+                   "<th class='num'>P&amp;L</th><th>Status</th><th>Flags</th><th>Trend</th><th>Company data</th></tr>")
         for h in holdings:
-            out.append(_monitor_row(h, by_sym.get(h["symbol"], {})))
+            out.append(_monitor_row(h, by_sym.get(h["symbol"], {}), run))
     else:
         out.append("<div class='wrap'><table><tr><th>Stock</th><th class='num'>Value</th><th class='num'>Weight</th>"
                    "<th class='num'>P&amp;L</th><th>Label</th><th class='num'>Conf.</th><th>Why</th>"
-                   "<th>Flags</th><th>Triggers / notes</th></tr>")
+                   "<th>Flags</th><th>Triggers / notes</th><th>Company data</th></tr>")
         for h in holdings:
-            out.append(_row(h["symbol"], h, by_sym.get(h["symbol"], {})))
+            out.append(_row(h["symbol"], h, by_sym.get(h["symbol"], {}), run))
     out.append("</table></div>")
 
     watch = [s for s in sigs if not s["held"]]
@@ -166,7 +177,8 @@ def render(run: dict) -> str:
         out.append("<div class='wrap'><table><tr><th>Lot</th><th class='num'>Qty</th><th class='num'>Cost</th>"
                    "<th>Term today</th><th class='num'>Gain</th><th class='num'>Est. tax</th><th>Note</th></tr>")
         for lot in tax["lots"]:
-            out.append(f"<tr><td>{escape(lot['symbol'])} · {escape(lot['account'])} · {escape(lot['buy_date'])}</td>"
+            bought = (f"before {lot['acquired_before']} (est.)" if lot.get("estimated") else lot["buy_date"])
+            out.append(f"<tr><td>{escape(lot['symbol'])} · {escape(lot['account'])} · {escape(bought)}</td>"
                        f"<td class='num'>{_n(lot['quantity'])}</td><td class='num'>{_n(lot['cost'], 2)}</td>"
                        f"<td>{escape(lot['term_if_sold_today'])}</td><td class='num'>{_n(lot['unrealised_gain'])}</td>"
                        f"<td class='num'>{_n(lot['est_tax_if_sold'])}</td><td>{escape(lot.get('note') or '')}</td></tr>")
@@ -193,31 +205,52 @@ def _flag_lines(s: dict) -> list[str]:
     return [f"{FLAG_NAMES.get(f['type'], f['type'])}: {f['detail']}" for f in s.get("flags", [])]
 
 
+def _stock_cell(h: dict, run: dict) -> str:
+    name = (run.get("names") or {}).get(h["symbol"]) or ""
+    sub = " · ".join(x for x in (name.title() if name.isupper() else name, _tag(h)) if x)
+    return f"<td>{escape(h['symbol'])}<div class='muted'>{escape(sub or h.get('sector') or '')}</div></td>"
+
+
+def _data_cell(h: dict, run: dict) -> str:
+    if h.get("is_etf"):
+        return "<td class='muted'>n/a (ETF)</td>"
+    c = (run.get("coverage") or {}).get(h["symbol"])
+    if not c or c["state"] == "none":
+        pend = f" · {c['pending_facts']} pending" if c and c["pending_facts"] else ""
+        return f"<td class='muted'>none{pend}</td>"
+    bits = [f"{c['annual_years']}y to {c['latest_annual_period']}" if c["annual_years"] else "",
+            f"holding {c['latest_shareholding_quarter']}" if c["latest_shareholding_quarter"] else "",
+            ", ".join(c["sites"][:1]),
+            f"{c['pending_facts']} pending" if c["pending_facts"] else ""]
+    return f"<td>{escape(' · '.join(b for b in bits if b))}</td>"
+
+
 def _tag(h: dict) -> str:
     return " · ".join(x for x in (h.get("asset_class"), h.get("market_cap_bucket")) if x and x != "unknown")
 
 
-def _monitor_row(h: dict, s: dict) -> str:
+def _monitor_row(h: dict, s: dict, run: dict) -> str:
     status = "ETF" if s.get("label") == "ETF" else "Monitor"
     trend = {"weak": "Weak", "neutral": "Neutral", "strong": "Strong"}.get(
         (s.get("technicals") or {}).get("stance"), "not enough history")
-    return (f"<tr><td>{escape(h['symbol'])}<div class='muted'>{escape(_tag(h) or h.get('sector') or '')}</div></td>"
+    return (f"<tr>{_stock_cell(h, run)}"
             f"<td class='num'>₹{_n(h.get('value'))}</td><td class='num'>{_n(h.get('weight'), pct=True)}</td>"
             f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>"
             f"<td class='muted'>{status}</td><td>{_list(_flag_lines(s)) or '<span class=muted>none</span>'}</td>"
-            f"<td class='muted'>{escape(trend)}</td></tr>")
+            f"<td class='muted'>{escape(trend)}</td>{_data_cell(h, run)}</tr>")
 
 
-def _row(symbol: str, h: dict, s: dict) -> str:
+def _row(symbol: str, h: dict, s: dict, run: dict | None = None) -> str:
+    run = run or {}
     why = s.get("why") or {}
     trig = [f"{t['type']}: {t['detail']}" for t in s.get("triggers", [])] + s.get("notes", [])
     if s.get("veto"):
         trig.append("governance: " + "; ".join(s["veto"]))
     label = s.get("label", "–")
     why_html = "no company data" if label == "INSUFFICIENT_DATA" else _why(why)
-    return (f"<tr><td>{escape(symbol)}<div class='muted'>{escape(_tag(h) or h.get('sector') or '')}</div></td>"
+    return (f"<tr>{_stock_cell(h, run)}"
             f"<td class='num'>₹{_n(h.get('value'))}</td><td class='num'>{_n(h.get('weight'), pct=True)}</td>"
             f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>"
             f"<td class='lbl {escape(label)}'>{escape(label)}</td><td class='num'>{_n(s.get('confidence'))}</td>"
             f"<td>{why_html}</td><td>{_list(_flag_lines(s))}</td>"
-            f"<td>{_list(trig)}</td></tr>")
+            f"<td>{_list(trig)}</td>{_data_cell(h, run)}</tr>")

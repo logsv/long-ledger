@@ -80,14 +80,35 @@ class PortfolioTest(unittest.TestCase):
                                {"symbol": "CCC", "quantity": 10, "average_price": 100}], "kite", as_of="2026-11-14")
         for s, px in (("AAA", 100), ("BBB", 100), ("CCC", 100)):
             import_prices(conn, [{"date": "2026-11-13", "close": px}], symbol=s, source="t")
-        import_trades(conn, [trade("AAA", "buy", 90, 100, "2025-01-01", "1")], "kite")
-        view = portfolio_view(conn, build_lots(conn, c.tax), c.thresholds)
+        import_trades(conn, [trade("AAA", "buy", 90, 100, "2025-01-01", "1"),
+                             trade("CCC", "buy", 20, 100, "2025-01-01", "2")], "kite")
+        book = build_lots(conn, c.tax)
+        view = portfolio_view(conn, book, c.thresholds)
         names = {(b["type"], b["name"]) for b in view["breaches"]}
         self.assertIn(("stock", "AAA"), names)
         self.assertIn(("sector", "Banks"), names)
-        rec = {(r["symbol"]) for r in view["reconciliation"]}
-        self.assertIn("AAA", rec)  # 100 at broker vs 90 in lots
-        self.assertIn("BBB", rec)  # no trades at all for BBB
+        rec = view["reconciliation"]
+        # broker 100 vs 90 traded: 10 opening shares estimated; BBB fully estimated
+        self.assertTrue(any(r["symbol"] is None and "estimated" in r["hint"] for r in rec))
+        est = {(l.symbol, l.quantity) for l in book.open_lots if l.estimated}
+        self.assertEqual(est, {("AAA", 10), ("BBB", 10)})
+        # more traded than held (a sell is missing): still a per-stock issue
+        self.assertIn("CCC", {r["symbol"] for r in rec})
+
+    def test_opening_lot_terms(self):
+        c = cfg()
+        conn = db()
+        import_holdings(conn, [{"symbol": "OLD", "quantity": 15, "average_price": 50}], "kite", as_of="2026-11-14")
+        import_trades(conn, [trade("OLD", "buy", 5, 80, "2026-04-06", "1")], "kite")
+        book = build_lots(conn, c.tax)
+        opening = [l for l in book.open_lots if l.estimated][0]
+        self.assertEqual((opening.quantity, opening.acquired_before), (10, "2026-04-06"))
+        view = tax_view(book, {"OLD": 100.0}, date(2026, 11, 14), c.tax, 30)
+        lot = next(l for l in view["lots"] if l["estimated"])
+        self.assertEqual(lot["term_if_sold_today"], "unknown")   # bought before Apr 2026: may still be short-term
+        view2 = tax_view(book, {"OLD": 100.0}, date(2027, 4, 7), c.tax, 30)
+        lot2 = next(l for l in view2["lots"] if l["estimated"])
+        self.assertEqual(lot2["term_if_sold_today"], "LTCG")     # >12 months after the latest possible buy date
 
 
 if __name__ == "__main__":

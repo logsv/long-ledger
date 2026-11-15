@@ -40,8 +40,11 @@ def run(conn: sqlite3.Connection, cfg: Config, as_of: date | None = None,
     prices = {h["symbol"]: h["price"] for h in view["holdings"] if h["price"]}
     taxes = tax_view(book, prices, as_of, cfg.tax, int(cfg.thresholds["tax_view"]["wait_window_days"]))
     pending = conn.execute("SELECT COUNT(*) FROM fundamental_fact WHERE confirmed = 0").fetchone()[0]
+    from . import coverage
+    cov = {h["symbol"]: coverage.status(conn, h["symbol"]) for h in view["holdings"] if not h["is_etf"]}
+    names = {r[0]: r[1] for r in conn.execute("SELECT symbol, name FROM security")}
     return {"as_of": as_of.isoformat(), "portfolio": view, "signals": signals, "tax": taxes,
-            "pending_facts": pending, "market": market_info}
+            "pending_facts": pending, "market": market_info, "coverage": cov, "names": names}
 
 
 def summarize(signal: dict) -> dict:

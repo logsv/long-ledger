@@ -71,7 +71,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 
 ## Status
 
-Version 0.4.0.
+Version 0.5.0.
 
 | Area | Status |
 |---|---|
@@ -98,7 +98,7 @@ Version 0.4.0.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 51 tests
+python3 -m unittest discover -s tests  # 52 tests
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -111,7 +111,12 @@ python3 tools/security_guards.py       # order tools blocked, secrets ignored
    security add-generic-password -s india-stock-analyzer -a fivepaisa_encryption_key -w
    ```
 
-**Trade history**, once: download each broker's tradebook (Kite Console, 5paisa and INDmoney reports) into `data/imports/` and run `/import`. After that, `/sync` adds new trades each day.
+**Trade history**, once: download into `data/imports/` and run `/import`. `.xlsx` and `.csv` files are read directly.
+- **Kite:** Console → Reports → Tradebook → Equity. One file per financial year, back to your oldest holding.
+- **5paisa:** the **Trade Listing** report (it has ISIN and trade numbers), back to your account opening.
+- **INDmoney:** a trade-history export. The tax report lists only realised trades and contains your PAN, so it isn't used.
+
+Shares bought before your earliest imported trade become **estimated opening lots**: quantities reconcile, but their buy date shows as "before <date>". Import older tradebooks to replace them with exact lots. After that, `/sync` adds new trades each day.
 
 **Company data**, first run:
 1. Run `/research --top 5` and review the result: sources, confirmed documents, anything pending.
@@ -143,7 +148,7 @@ Run `/sync` on every trading day you trade. The APIs only return that day's trad
 | `/sell-review` | Holdings with triggers or flags, with lot-by-lot tax impact |
 | `/analyze SYMBOL` | Full breakdown for one stock: evidence, timing, flags, tax lots |
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
-| `/research [--top N] [--refresh] [SYMBOLS]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
+| `/research [--top N] [--refresh] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
 
 ## Core CLI
@@ -160,6 +165,8 @@ python3 tools/isa.py fivepaisa status           # then: fivepaisa login, fivepai
 python3 tools/isa.py import-classification --file data/imports/mcp/indmoney-networth-holdings-raw-<date>.json
 python3 tools/isa.py import-trades --source kite --file data/imports/tradebook.csv
 python3 tools/isa.py research-targets --top 20     # what /research will fetch next
+python3 tools/isa.py research-targets "Hero MotoCorp" SANGHVIMOV
+python3 tools/isa.py coverage                      # company data per holding
 python3 tools/isa.py check-facts --symbol SANGHVIMOV
 python3 tools/isa.py confirm-facts --source SANGHVIMOV-AR-FY2026
 python3 tools/isa.py watch add HDFCBANK

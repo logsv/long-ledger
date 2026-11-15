@@ -16,7 +16,7 @@ from . import audit, service
 from .config import ROOT, Config, db_path, load_dotenv
 from .engine import scoring
 from .importers import broker, classification, facts, market
-from .importers.common import ImportError_, load_records, parse_date
+from .importers.common import ImportError_, load_file, load_records, parse_date
 from .report import render
 from .storage.db import connect, ensure_security, normalize_symbol
 from .tax import build_lots, tax_view
@@ -45,8 +45,11 @@ def cmd_init(conn, cfg, args):
 
 
 def _import(conn, kind, fn, args, **kw):
-    text, name = _read_input(args.file)
-    records = load_records(text)
+    if args.file not in (None, "-"):
+        p = Path(args.file).expanduser()
+        records, name = load_file(p), p.name
+    else:
+        records, name = load_records(sys.stdin.read()), None
     res = fn(conn, records, file_name=name, **kw)
     audit.append(conn, "import", {"kind": kind, "file": name, **{k: v for k, v in kw.items() if k != "as_of"},
                                   "stored": res["stored"], "skipped": len(res.get("skipped", []))})
@@ -113,32 +116,64 @@ def cmd_check_facts(conn, cfg, args):
 
 
 def cmd_research_targets(conn, cfg, args):
-    """Work queue for /research: equity holdings (and watchlist) by weight, with data freshness."""
-    from .tax import build_lots
+    """Work queue for /research.
+
+    With queries (symbols or company names): those companies. Without: equity
+    holdings by weight, then the watchlist. --refresh keeps only stocks that
+    have data but may have a newer report.
+    """
+    from . import coverage
     from .portfolio import portfolio_view
+    from .tax import build_lots
     view = portfolio_view(conn, build_lots(conn, cfg.tax), cfg.thresholds)
-    watch = [r[0] for r in conn.execute("SELECT symbol FROM watchlist")]
-    rows = [h for h in view["holdings"] if not h["is_etf"]]
-    rows.sort(key=lambda h: -(h.get("weight") or 0))
-    held = {h["symbol"] for h in rows}
-    symbols = [h["symbol"] for h in rows] + [s for s in watch if s not in held]
-    out = []
-    for sym in symbols[: args.top]:
-        sec = conn.execute("SELECT name, isin FROM security WHERE symbol = ?", (sym,)).fetchone()
-        latest = conn.execute(
-            "SELECT MAX(period_end), MAX(published_at) FROM fundamental_fact WHERE symbol = ? AND metric = 'revenue'"
-            " AND (extracted_by != 'llm' OR confirmed = 1)", (sym,)).fetchone()
-        annual_years = conn.execute(
-            "SELECT COUNT(DISTINCT period_end) FROM fundamental_fact WHERE symbol = ? AND metric = 'revenue'",
-            (sym,)).fetchone()[0]
-        share_q = conn.execute(
-            "SELECT MAX(period_end) FROM fundamental_fact WHERE symbol = ? AND metric = 'promoter_pct'", (sym,)).fetchone()[0]
-        out.append({"symbol": sym, "name": sec["name"] if sec else None, "isin": sec["isin"] if sec else None,
-                    "weight": next((h["weight"] for h in rows if h["symbol"] == sym), None),
-                    "annual_years_stored": annual_years, "latest_annual_period": latest[0],
-                    "latest_shareholding_quarter": share_q,
-                    "needs": ("full history" if annual_years < 3 else "refresh if a newer annual report exists")})
-    return {"targets": out, "metrics": list(facts.METRICS)}
+    weights = {h["symbol"]: h.get("weight") for h in view["holdings"]}
+    out, unresolved = [], []
+    if args.queries:
+        for q in args.queries:
+            r = coverage.resolve(conn, q)
+            if r["symbol"] is None and r["match"] in ("ambiguous", "none"):
+                unresolved.append(r)  # too vague or several matches: ask the user
+                continue
+            if r["symbol"] is None:  # a company not yet in the database
+                out.append({"symbol": None, "name": r["name"], "isin": None, "weight": None, "match": "new",
+                            "data": None, "needs": "identify symbol, then full history"})
+                continue
+            out.append({"symbol": r["symbol"], "name": r["name"], "isin": r["isin"], "match": r["match"]})
+    else:
+        rows = sorted((h for h in view["holdings"] if not h["is_etf"]), key=lambda h: -(h.get("weight") or 0))
+        held = {h["symbol"] for h in rows}
+        watch = [r[0] for r in conn.execute("SELECT symbol FROM watchlist ORDER BY symbol")]
+        for sym in [h["symbol"] for h in rows] + [s for s in watch if s not in held]:
+            sec = conn.execute("SELECT name, isin FROM security WHERE symbol = ?", (sym,)).fetchone()
+            out.append({"symbol": sym, "name": sec["name"] if sec else None, "isin": sec["isin"] if sec else None,
+                        "match": "portfolio"})
+    targets = []
+    for t_ in out:
+        if t_["symbol"]:
+            st = coverage.status(conn, t_["symbol"])
+            if args.refresh and st["state"] == "none":
+                continue
+            t_.update(weight=weights.get(t_["symbol"]), data=st,
+                      needs="full history" if st["annual_years"] < 3 else "refresh if a newer report exists")
+        elif args.refresh:
+            continue
+        targets.append(t_)
+    if not args.queries:
+        targets = targets[: args.top]
+    return {"targets": targets, "unresolved": unresolved, "metrics": list(facts.METRICS)}
+
+
+def cmd_coverage(conn, cfg, args):
+    from . import coverage
+    from .portfolio import portfolio_view
+    from .tax import build_lots
+    view = portfolio_view(conn, build_lots(conn, cfg.tax), cfg.thresholds)
+    rows = [{"symbol": h["symbol"], "weight": h.get("weight"), **coverage.status(conn, h["symbol"])}
+            for h in view["holdings"] if not h["is_etf"]]
+    covered = [r for r in rows if r["state"] == "full"]
+    return {"equity_holdings": len(rows), "with_full_data": len(covered),
+            "value_share_covered": round(sum(r["weight"] or 0 for r in covered), 4),
+            "holdings": sorted(rows, key=lambda r: -(r["weight"] or 0))}
 
 
 def cmd_metrics(conn, cfg, args):
@@ -333,8 +368,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("check-facts", help="consistency checks on stored facts")
     s.add_argument("--symbol")
     s.add_argument("--source")
-    s = sub.add_parser("research-targets", help="work queue for /research")
+    s = sub.add_parser("research-targets", help="work queue for /research (by weight, or given symbols/names)")
+    s.add_argument("queries", nargs="*", help="symbols or company names, e.g. SANGHVIMOV \"Sanghvi Movers\"")
     s.add_argument("--top", type=int, default=20)
+    s.add_argument("--refresh", action="store_true", help="only stocks that already have data")
+    s = sub.add_parser("coverage", help="company-data coverage per holding")
     sub.add_parser("metrics", help="list accepted fact metrics")
     s = sub.add_parser("security", help="set sector/industry/name for a stock")
     s.add_argument("symbol")

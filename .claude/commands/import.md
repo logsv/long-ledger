@@ -21,6 +21,16 @@ Look at the name, header row or first page, then route it:
 
 `python3 tools/isa.py metrics` lists the accepted metric names and units: crore for amounts, plain numbers for percentages.
 
+**Spreadsheets:** `.xlsx` files are read directly; there's no need to convert them. Title rows above the header and footer lines are skipped.
+- **5paisa:** use the **Trade Listing** report (it has ISIN and trade numbers). Not the "EQUITY Transaction" report, which has neither, so it can't be matched or de-duplicated.
+- **INDmoney:** its tax report lists only realised trades and contains your PAN. Don't import it.
+
+**Unknown ISINs:** if an import returns `unknown_isins`, those stocks aren't in the database yet. They are usually shares you've sold.
+1. Look each ISIN up with `mcp__kite__search_instruments` (`filter_on: "isin"`).
+2. Write a CSV `symbol,isin,name` with the values **exactly as returned** to `data/imports/mcp/isin-lookup-<date>.csv`.
+3. Run `python3 tools/isa.py import-securities --file <that file>`.
+4. Re-import the same trade file. Duplicates are skipped, so only the missing rows are added.
+
 ## Step 2: PDFs through filing-reader
 For each PDF, dispatch the `filing-reader` subagent with the file path, the symbol, and the `metrics` list.
 - It returns a JSON array of facts, each with a `source_ref` (file name and page).

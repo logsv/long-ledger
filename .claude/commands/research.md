@@ -5,11 +5,15 @@ Fill in financials, shareholding, pledge, auditor opinion and sector for your ho
 `$ARGUMENTS`:
 - empty: the top 20 holdings by weight
 - `--top N`
-- one or more symbols
-- `--refresh`: only companies whose stored data is older than their latest report
+- one or more **symbols or company names**, for example `SANGHVIMOV "Hero MotoCorp" "Pace Digitek"`. Quote names that contain spaces.
+- `--refresh`: only companies that already have data; checks for a newer report
 
 ## Step 1: Work queue
-Run `python3 tools/isa.py research-targets --top <N>`. For each target you get the name, ISIN, what is stored, and the accepted metric list.
+Run `python3 tools/isa.py research-targets [--top N] [--refresh] [symbols or "company names"...]`.
+- Each target comes with its symbol, name, ISIN, what is stored (`data`), and the accepted metric list.
+- A name that matches one stock in the database resolves to its symbol.
+- **`unresolved`:** a name that is too vague or matches several stocks. Show the candidates and ask the user which one they meant. Never guess.
+- **`match: "new"`:** a company that isn't in the database, so `symbol` is null. The researcher must identify its NSE symbol and ISIN from the company's own site.
 
 ## Step 2: Research, about 4 companies at a time in parallel
 For each target, dispatch `company-researcher` with:
@@ -20,6 +24,11 @@ For each target, dispatch `company-researcher` with:
 
 ## Step 3: Store what came back
 For each result:
+0. For a `new` company: check that the returned `symbol` and `isin` look right (NSE symbol, 12-character ISIN starting with INE). Then run:
+   - `python3 tools/isa.py security <SYMBOL> --name "<name>" --isin <ISIN>`
+   - `python3 tools/isa.py watch add <SYMBOL> --note "researched"`
+
+   This makes the company appear in reports.
 1. Save `facts` unchanged to `data/imports/research/<SYMBOL>-<YYYY-MM-DD>.json`.
 2. Run `python3 tools/isa.py import-facts --source research --extracted-by llm --file <that file>`. Each row keeps its own per-document `source`.
 3. If a sector was returned, run `python3 tools/isa.py security <SYMBOL> --sector "<sector>" --industry "<industry>"`.

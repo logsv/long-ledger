@@ -5,7 +5,7 @@ tools: WebSearch, WebFetch, Read
 ---
 
 You collect company data for the India Stock Analyzer, a personal, analysis-only tool. The orchestrator gives you:
-- the symbol, company name and ISIN
+- the symbol, company name and ISIN. For a company new to the database, only the name is given (symbol null): identify its **NSE symbol** and **ISIN** from the company's own site (investor page, annual report cover or shareholding filing) and return them
 - what is already stored (latest annual period and shareholding quarter)
 - the accepted metric list with units
 - the sector list
@@ -48,7 +48,7 @@ When WebFetch returns a saved PDF path in a harness note, open it with Read, usi
 Only this JSON object:
 
 ```json
-{"symbol": "...", "official_site": "https://...",
+{"symbol": "...", "isin": "INE...", "name": "<legal name>", "official_site": "https://...",
  "sector": "<one from the sector list>", "industry": "<short phrase from the annual report>",
  "facts": [{"symbol": "...", "metric": "...", "period_end": "YYYY-MM-DD", "published_at": "YYYY-MM-DD",
             "value": 0, "source": "<SYMBOL>-<DOC>-<PERIOD>, e.g. SANGHVIMOV-AR-FY2026",

@@ -29,6 +29,8 @@ def parse_date(value: Any) -> str:
     if isinstance(value, date):
         return value.isoformat()
     s = str(value).strip()
+    if re.fullmatch(r"\d{5}(\.0+)?", s):  # Excel serial date
+        return (date(1899, 12, 30) + timedelta(days=int(float(s)))).isoformat()
     m = _MS_DATE.fullmatch(s)
     if m:  # 5paisa style /Date(1699999999000+0530)/
         ms = int(m.group(1))
@@ -111,3 +113,72 @@ def _unwrap(data: Any) -> list[dict]:
         if all(not isinstance(v, (list, dict)) for v in data.values()):
             return [data]
     raise ImportError_("could not find a list of records in the JSON")
+
+
+# ---- spreadsheets (stdlib only) ----------------------------------------------
+
+_HEADER_WORDS = re.compile(r"(date|symbol|scrip|qty|quantity|isin|price|rate|trade|metric|value|close)", re.I)
+_XNS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+
+
+def _xlsx_rows(path) -> list[list[str]]:
+    """Rows of the first worksheet of an .xlsx file, as strings (no third-party libs)."""
+    import zipfile
+    from xml.etree import ElementTree as ET
+    with zipfile.ZipFile(path) as z:
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in z.namelist():
+            for si in ET.fromstring(z.read("xl/sharedStrings.xml")).iter(f"{_XNS}si"):
+                shared.append("".join(t.text or "" for t in si.iter(f"{_XNS}t")))
+        sheets = sorted(n for n in z.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n))
+        if not sheets:
+            raise ImportError_("no worksheet in the .xlsx file")
+        rows: list[list[str]] = []
+        for r in ET.fromstring(z.read(sheets[0])).iter(f"{_XNS}row"):
+            vals: dict[int, str] = {}
+            for c in r.iter(f"{_XNS}c"):
+                ref = c.get("r") or ""
+                col = 0
+                for ch in re.sub(r"\d", "", ref):
+                    col = col * 26 + (ord(ch.upper()) - 64)
+                idx = (col - 1) if col else len(vals)
+                v, t = c.find(f"{_XNS}v"), c.get("t")
+                if t == "s" and v is not None:
+                    vals[idx] = shared[int(v.text)]
+                elif t == "inlineStr":
+                    vals[idx] = "".join(x.text or "" for x in c.iter(f"{_XNS}t"))
+                else:
+                    vals[idx] = v.text if v is not None and v.text is not None else ""
+            if vals:
+                rows.append([vals.get(i, "") for i in range(max(vals) + 1)])
+        return rows
+
+
+def _table(rows: list[list[str]]) -> list[dict]:
+    """Find the header row (skipping title/preamble rows) and return dict rows; footers fail validation later."""
+    for i, r in enumerate(rows):
+        cells = [c.strip() for c in r]
+        if sum(1 for c in cells if c) >= 4 and len(_HEADER_WORDS.findall(" ".join(cells))) >= 2:
+            header = cells
+            out = []
+            for row in rows[i + 1:]:
+                if not any(str(c).strip() for c in row):
+                    continue
+                out.append({header[j]: (row[j].strip() if j < len(row) else "") for j in range(len(header)) if header[j]})
+            return out
+    raise ImportError_("could not find a header row")
+
+
+def load_file(path) -> list[dict]:
+    """Records from .xlsx, .csv (with or without preamble rows) or .json."""
+    from pathlib import Path
+    p = Path(path)
+    if p.suffix.lower() == ".xlsx":
+        return _table(_xlsx_rows(p))
+    text = p.read_text(encoding="utf-8-sig")
+    if p.suffix.lower() == ".csv":
+        rows = list(csv.reader(io.StringIO(text)))
+        if rows and len(_HEADER_WORDS.findall(" ".join(rows[0]))) >= 2:
+            return [dict(r) for r in csv.DictReader(io.StringIO(text))]
+        return _table(rows)
+    return load_records(text)

@@ -2,6 +2,29 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-15
+
+### Added
+- **`/research` by company name:** `research-targets "Hero MotoCorp" SANGHVIMOV ...`. Names resolve to known stocks; vague or ambiguous names are returned for you to choose; new companies are identified by the researcher and added to the watchlist.
+- **`coverage` command.**
+- **Report:**
+  - a company name under each symbol
+  - a "Company data" column (years stored, latest shareholding quarter, source site, pending facts)
+  - a summary card for coverage by value
+  - "before <date> (est.)" for opening lots
+  - an alert for sells with no earlier buy
+- **Native `.xlsx` import** (standard library only), with header-row detection and Excel serial dates.
+- **5paisa Trade Listing format:** Buy Qty / Sell Qty, Trade No, Market Rate.
+  - Symbols are resolved by ISIN, or by an exact company-name match that also records the ISIN.
+  - Unknown ISINs are listed so `/import` can look them up through Kite.
+- **Estimated opening lots** for shares held before the earliest imported trade.
+  - Broker quantities now reconcile.
+  - Their term is `unknown` until 12 months after the latest possible buy date, and they're taxed at the STCG rate as a worst case.
+- **INDmoney average cost** from `invested_amount`.
+
+### Fixed
+- A trade number repeated on different rows of one file is no longer dropped as a duplicate.
+
 ## [0.4.0] - 2026-11-15
 
 ### Added
