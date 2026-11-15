@@ -82,7 +82,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 
 ## Status
 
-Version 0.7.0.
+Version 0.7.1.
 
 | Area | Status |
 |---|---|
@@ -96,6 +96,7 @@ Version 0.7.0.
 | Company data from company websites (`/research`) | Built: research subagent, fact checks, automatic confirmation of clean documents |
 | Company scoring (fundamentals, governance, valuation) | Built. Active for each company once its data is confirmed |
 | Sector and events blocks | Planned |
+| Local dashboard (`/dashboard`) | Built, **local-only**: the code is git-ignored and kept on this machine; its command, skill and docs are in git |
 | CAS PDF parsing | Planned. Use broker tradebooks |
 | Loss set-off, 2018 grandfathering, STT | Not modelled. Tax figures are gross estimates |
 | Backtesting | Planned |
@@ -111,7 +112,7 @@ Version 0.7.0.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 66 tests
+python3 -m unittest discover -s tests  # 59 tests (66 with the local dashboard tests)
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -154,6 +155,7 @@ Kite and 5paisa sessions expire every day, which is a regulatory requirement, so
    - index and India VIX history from Kite
    - asset class and market cap from INDmoney
 3. Run **`/portfolio`**, or **`/report`** for the HTML version: market regime, allocation, limit breaches, labels, risk flags and tax waits.
+4. Optional: **`/dashboard`** to browse holdings, trades and tax lots with filters in your browser. After a later `/sync`, press **Refresh data**.
 
 Company data changes quarterly, not daily. Run **`/research`** once for your top holdings (`--top 20`), then `/research --refresh` after each results season.
 
@@ -200,7 +202,7 @@ It is built from the Python standard library plus [Tabulator](https://tabulator.
 - listens on 127.0.0.1 only, and rejects other Host headers
 - data views read the database read-only
 - buttons need a per-run token and a same-origin request
-- no order actions exist, and the safety guard checks this
+- no order actions exist: the allowed actions are fixed in `server.py`, and `tools/security_guards.py` scans `src/isa/web` for order-endpoint names whenever the folder is present
 
 ## Slash commands
 
@@ -262,7 +264,7 @@ All tunables are in `config/*.toml`:
 ```
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
 .mcp.json                 Kite and INDmoney MCP servers
-.claude/settings.json     permissions: order tools denied, core CLI allowed
+.claude/settings.json     permissions: order tools and exchange/aggregator sites denied; core CLI and dashboard launcher allowed
 .claude/commands/         /sync /research /dashboard /portfolio /report /sell-review /analyze /thesis /import
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary, dashboard)
 .claude/agents/           company-researcher, filing-reader, governance-checker, news-summarizer (read-only)
@@ -274,10 +276,10 @@ src/isa/
   engine/                 market regime, monitor flags, technicals, fundamentals, governance, valuation, scoring
   tax/  portfolio/        FIFO lots and STCG/LTCG; allocation, limits, reconciliation
   report/  audit/         HTML report; hash-chained audit log
-  web/                    local dashboard: stdlib server (server.py), JSON views (api.py),
+  web/                    local-only, git-ignored: dashboard server (server.py), JSON views (api.py),
                           static UI (index.html, app.js, app.css, vendor/tabulator)
-tools/                    isa.py (CLI), security_guards.py
-tests/                    unit and end-to-end tests (synthetic data only)
+tools/                    isa.py (CLI), security_guards.py; dashboard.py (local-only, git-ignored)
+tests/                    unit and end-to-end tests (synthetic data only); test_web.py is local-only
 data/                     git-ignored: isa.db, imports/, reports/
 ```
 
