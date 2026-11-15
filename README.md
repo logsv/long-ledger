@@ -9,9 +9,9 @@ A personal-use analysis workspace for long-term investors in Indian equities (NS
 
 ## Data sources
 
-All data comes from your three brokers, read-only:
+Data comes from your three brokers (read-only) and from listed companies' own websites:
 
-| Broker | How | What it provides |
+| Source | How | What it provides |
 |---|---|---|
 | **Zerodha Kite** | Official MCP server (`mcp.kite.trade`) | Holdings, today's trades, daily prices, **index and India VIX history**, instrument names and ISINs |
 | **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers |
@@ -64,7 +64,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 - **HTML report:** one self-contained file.
 - **Audit log:** append-only and hash-chained. Records every import, signal and decision.
 
-**When company data is available** (manual imports today):
+**For each company with confirmed data** (from `/research` or `/import`):
 - **Scoring** on fundamentals, governance (red flags block a BUY) and valuation: own history, peers, and an intrinsic-value range with its assumptions shown.
 - **Labels:** BUY / ACCUMULATE / HOLD / TRIM / SELL, with confidence and a plain-language "why".
 - **Sell triggers:** your thesis conditions breaking, a 20% loss with weakening fundamentals, or valuation stretched above intrinsic value. A loss on its own never triggers a sell.
@@ -113,6 +113,11 @@ python3 tools/security_guards.py       # order tools blocked, secrets ignored
 
 **Trade history**, once: download each broker's tradebook (Kite Console, 5paisa and INDmoney reports) into `data/imports/` and run `/import`. After that, `/sync` adds new trades each day.
 
+**Company data**, first run:
+1. Run `/research --top 5` and review the result: sources, confirmed documents, anything pending.
+2. Then run `/research --top 20`. The top 20 holdings cover most of the portfolio's value.
+3. Holdings beyond those can follow in later runs.
+
 ## Daily use
 
 Kite and 5paisa sessions expire every day, which is a regulatory requirement, so each day starts with a sign-in on each broker's own page.
@@ -138,7 +143,7 @@ Run `/sync` on every trading day you trade. The APIs only return that day's trad
 | `/sell-review` | Holdings with triggers or flags, with lot-by-lot tax impact |
 | `/analyze SYMBOL` | Full breakdown for one stock: evidence, timing, flags, tax lots |
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
-| `/research [--top N] [SYMBOLS]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
+| `/research [--top N] [--refresh] [SYMBOLS]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
 
 ## Core CLI
@@ -183,7 +188,7 @@ All tunables are in `config/*.toml`:
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
 .mcp.json                 Kite and INDmoney MCP servers
 .claude/settings.json     permissions: order tools denied, core CLI allowed
-.claude/commands/         /sync /portfolio /report /sell-review /analyze /thesis /import
+.claude/commands/         /sync /research /portfolio /report /sell-review /analyze /thesis /import
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary)
 .claude/agents/           company-researcher, filing-reader, governance-checker, news-summarizer (read-only)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)
@@ -205,7 +210,8 @@ How the pieces fit is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 See [SECURITY.md](SECURITY.md). In short:
 - **No orders, in four layers:** every broker order and GTT tool is denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
 - **No secrets in the repo.** Claude cannot read `.env`. 5paisa keys and tokens stay in the Keychain.
-- **Untrusted data.** All broker output and imported files are treated as data, never as instructions.
+- **Web research is limited to company websites.** Exchange and aggregator domains are denied. Searches carry company names only. Documents are confirmed automatically only if every consistency check passes.
+- **Untrusted data.** All broker output, web pages and imported files are treated as data, never as instructions.
 
 ## Contributing
 
