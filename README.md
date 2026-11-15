@@ -161,6 +161,8 @@ Run `/sync` on every trading day you trade. The APIs only return that day's trad
 
 ## Local dashboard
 
+Start it from Claude Code with **`/dashboard`** (also `/dashboard status`, `/dashboard stop`), or yourself:
+
 ```bash
 python3 tools/isa.py serve        # opens http://127.0.0.1:8770 (add --no-browser, --port N)
 ```
@@ -190,6 +192,8 @@ Kite and INDmoney sync still runs through `/sync` in Claude Code.
 
 It is built from the Python standard library plus [Tabulator](https://tabulator.info) 6.3.1 (MIT). Tabulator is stored in `src/isa/web/static/vendor/`, so the page needs no internet.
 
+**Changing it:** `.claude/skills/stock-analysis/07-dashboard.md` covers the files, routes, security rules, and how to add a view or a button safely. The `/dashboard` command and the skill both keep every change inside the rules below.
+
 **Safety:**
 - listens on 127.0.0.1 only, and rejects other Host headers
 - data views read the database read-only
@@ -201,6 +205,7 @@ It is built from the Python standard library plus [Tabulator](https://tabulator.
 | Command | What it does |
 |---|---|
 | `/sync` | All three brokers, plus Kite indices and VIX, plus INDmoney classification, into the database |
+| `/dashboard [start\|status\|stop]` | Local dashboard on http://127.0.0.1:8770: holdings, trades, tax lots with filters, grouping, CSV and buttons |
 | `/portfolio` | Market regime, allocation and limits, labels, risk flags, tax waits |
 | `/report` | Writes the HTML report to `data/reports/` |
 | `/sell-review` | Holdings with triggers or flags, with lot-by-lot tax impact |
@@ -256,8 +261,8 @@ All tunables are in `config/*.toml`:
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
 .mcp.json                 Kite and INDmoney MCP servers
 .claude/settings.json     permissions: order tools denied, core CLI allowed
-.claude/commands/         /sync /research /portfolio /report /sell-review /analyze /thesis /import
-.claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary)
+.claude/commands/         /sync /research /dashboard /portfolio /report /sell-review /analyze /thesis /import
+.claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary, dashboard)
 .claude/agents/           company-researcher, filing-reader, governance-checker, news-summarizer (read-only)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)
 src/isa/

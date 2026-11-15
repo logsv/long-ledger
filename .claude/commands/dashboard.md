@@ -1,0 +1,30 @@
+# /dashboard: start, check or stop the local dashboard
+
+The dashboard is a live browser view of the database: Overview, Holdings, Trades, Tax lots and Data quality, with filters, grouping, CSV export and buttons. The server is `python3 tools/isa.py serve`, built from the Python standard library plus the vendored Tabulator. Details are in `.claude/skills/stock-analysis/07-dashboard.md`.
+
+`$ARGUMENTS`:
+- empty or `start`: start the dashboard
+- `status`: check whether it's running
+- `stop`: stop it
+- `--port N`: use a port other than 8770
+
+## start
+1. Check whether it's already running: `curl -s -o /dev/null -w '%{http_code}' -H 'Host: 127.0.0.1:8770' http://127.0.0.1:8770/`. A `200` means it is; give the user the link and stop here.
+2. Otherwise start it **in the background** with the Bash tool's `run_in_background`, so it keeps running:
+   `python3 tools/isa.py serve --no-browser` (add `--port N` if asked).
+3. Wait for the ready line `India Stock Analyzer dashboard: http://127.0.0.1:8770/`, then give the user the link: http://127.0.0.1:8770.
+4. Tell the user what's there:
+   - **Tabs:** Overview, Holdings (click a row to see its trades and lots), Trades, Tax lots, Data quality.
+   - **Buttons:** Refresh data, Recompute signals, Export HTML report, 5paisa sync. The 5paisa sync needs today's `python3 tools/isa.py fivepaisa login`.
+   - **Kite and INDmoney** still sync through `/sync` here; then press **Refresh data**.
+5. If the port is busy, offer `--port 8771`.
+
+## status
+Run the same check as step 1 and report whether it's up, with its URL.
+
+## stop
+Stop the background task that runs `tools/isa.py serve`. If it wasn't started in this session, find it with `pgrep -f "tools/isa.py serve"` and ask the user before killing that process.
+
+## Rules
+- The dashboard listens on **127.0.0.1 only**. Never add `--host`, never bind to all interfaces, never expose it through a tunnel or share the URL.
+- It has **no order actions**, and must never get any. To add a view or a button, follow `07-dashboard.md`, keep `python3 tools/security_guards.py` passing, and add a test to `tests/test_web.py`.
