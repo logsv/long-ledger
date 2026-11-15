@@ -31,7 +31,12 @@ ALLOWED_SERVERS = {
     "kite": "https://mcp.kite.trade/mcp",
 }
 REQUIRED_IGNORES = {".env", ".env.*", "creds.json", "data/*", "*.db", "*.pdf", "*.csv"}
-REQUIRED_DENY = {"Read(.env)", "Read(.env.*)", "Read(**/creds.json)"}
+REQUIRED_DENY = {"Read(.env)", "Read(.env.*)", "Read(**/creds.json)",
+                 # sites whose terms forbid automated collection, or second-hand aggregators
+                 "WebFetch(domain:nseindia.com)", "WebFetch(domain:bseindia.com)",
+                 "WebFetch(domain:screener.in)", "WebFetch(domain:tijorifinance.com)",
+                 "WebFetch(domain:trendlyne.com)", "WebFetch(domain:moneycontrol.com)",
+                 "WebFetch(domain:tickertape.in)"}
 ORDER_CODE = re.compile(
     r"(place_order|modify_order|cancel_order|place_gtt|modify_gtt|delete_gtt|PlaceOrderRequest|"
     r"ModifyOrderRequest|CancelOrderRequest|/orders/regular|/gtt/triggers|V1/PlaceOrder|PlaceSMOOrder)",

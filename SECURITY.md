@@ -32,6 +32,15 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
   - `fivepaisa status` never prints secrets.
   - The client refuses any endpoint not on its read-only allowlist, and the guard checks that allowlist.
 
+## Web research
+
+- `/research` uses web search and fetch **only to read companies' own websites**.
+- Exchange, aggregator and broker sites are denied in `.claude/settings.json`: nseindia, bseindia, screener, tijori, trendlyne, moneycontrol and tickertape. `security_guards.py` checks these denials.
+- The `company-researcher` subagent is read-only (WebSearch, WebFetch, Read).
+- Searches carry company names only, never quantities, values or account data.
+- Extracted numbers carry their source URL and page.
+- Documents are confirmed automatically only when every consistency check passes; turn this off with `auto_confirm_checked = false`.
+
 ## Personal data
 
 - `data/` (database, imports, reports) is git-ignored and stays on your Mac.

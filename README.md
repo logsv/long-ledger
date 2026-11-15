@@ -16,10 +16,17 @@ All data comes from your three brokers, read-only:
 | **Zerodha Kite** | Official MCP server (`mcp.kite.trade`) | Holdings, today's trades, daily prices, **index and India VIX history**, instrument names and ISINs |
 | **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers |
 | **5paisa** | Xstream API, read-only client (`tools/isa.py fivepaisa`) | Holdings, today's trades, daily prices |
+| **Company websites** | `/research`: Claude web search and fetch, limited to each company's own investor-relations pages | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector |
 
-The brokers do **not** provide company financials, valuation, shareholding, pledge data or sectors. So the tool currently runs in **monitoring mode**: market conditions, allocation, risk flags and tax timing. Company scores and BUY/SELL labels stay off; stocks show `INSUFFICIENT_DATA`. They switch on automatically if company data is added later, through manual imports (`/import`) or a company-data source. Nothing needs rebuilding.
+The brokers do **not** provide company financials, valuation, shareholding, pledge data or sectors. Those come from **`/research`**:
+- A read-only subagent finds each company's official website and reads its annual reports, results and shareholding filings.
+- Every number is stored with its source URL and page.
+- `check-facts` tests each document for unit errors (lakh vs crore), EPS ≠ PAT ÷ shares, EBIT above EBITDA, impossible percentages and revenue jumps.
+- Documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to confirm them yourself. Documents with issues stay pending.
 
-No data is collected from nseindia.com or bseindia.com automatically; their terms prohibit it.
+Until a company has confirmed data it is in **monitoring mode**: market conditions, allocation, risk flags and tax timing, with no BUY/SELL label.
+
+Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com, trendlyne.com, moneycontrol.com or tickertape.in. Their terms forbid automated collection, or they are second-hand aggregators. These domains are denied in `.claude/settings.json`, and the safety guard checks it.
 
 ## What you get
 
@@ -64,7 +71,7 @@ No data is collected from nseindia.com or bseindia.com automatically; their term
 
 ## Status
 
-Version 0.3.0.
+Version 0.4.0.
 
 | Area | Status |
 |---|---|
@@ -73,7 +80,8 @@ Version 0.3.0.
 | INDmoney classification, ETF label, allocation limits | Built |
 | Market regime from Kite index and VIX data | Built |
 | Risk flags, timing, tax view, report, audit log | Built |
-| Company scoring (fundamentals, governance, valuation) | Built. Waits for company data, which the brokers don't provide |
+| Company data from company websites (`/research`) | Built: research subagent, fact checks, automatic confirmation of clean documents |
+| Company scoring (fundamentals, governance, valuation) | Built. Active for each company once its data is confirmed |
 | Sector and events blocks | Planned |
 | CAS PDF parsing | Planned. Use broker tradebooks |
 | Loss set-off, 2018 grandfathering, STT | Not modelled. Tax figures are gross estimates |
@@ -90,7 +98,7 @@ Version 0.3.0.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 48 tests
+python3 -m unittest discover -s tests  # 51 tests
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -114,7 +122,9 @@ Kite and 5paisa sessions expire every day, which is a regulatory requirement, so
    - holdings, today's trades and prices from all three brokers
    - index and India VIX history from Kite
    - asset class and market cap from INDmoney
-3. Run **`/portfolio`**, or **`/report`** for the HTML version: market regime, allocation, limit breaches, risk flags and tax waits.
+3. Run **`/portfolio`**, or **`/report`** for the HTML version: market regime, allocation, limit breaches, labels, risk flags and tax waits.
+
+Company data changes quarterly, not daily. Run **`/research`** once for your top holdings (`--top 20`), then `/research --refresh` after each results season.
 
 Run `/sync` on every trading day you trade. The APIs only return that day's trades, and a missed day shows up as a reconciliation warning.
 
@@ -128,6 +138,7 @@ Run `/sync` on every trading day you trade. The APIs only return that day's trad
 | `/sell-review` | Holdings with triggers or flags, with lot-by-lot tax impact |
 | `/analyze SYMBOL` | Full breakdown for one stock: evidence, timing, flags, tax lots |
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
+| `/research [--top N] [SYMBOLS]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
 
 ## Core CLI
@@ -143,6 +154,9 @@ python3 tools/isa.py report
 python3 tools/isa.py fivepaisa status           # then: fivepaisa login, fivepaisa sync
 python3 tools/isa.py import-classification --file data/imports/mcp/indmoney-networth-holdings-raw-<date>.json
 python3 tools/isa.py import-trades --source kite --file data/imports/tradebook.csv
+python3 tools/isa.py research-targets --top 20     # what /research will fetch next
+python3 tools/isa.py check-facts --symbol SANGHVIMOV
+python3 tools/isa.py confirm-facts --source SANGHVIMOV-AR-FY2026
 python3 tools/isa.py watch add HDFCBANK
 python3 tools/isa.py decision HDFCBANK held --note "reviewed after results"
 python3 tools/isa.py audit verify
@@ -156,7 +170,7 @@ All tunables are in `config/*.toml`:
 
 | File | Contents |
 |---|---|
-| `thresholds.toml` | Limits (`max_stock_weight` 10%, `max_precious_metals_weight` 15%, `max_small_cap_weight` 60%, `max_sector_weight` 25%), loss trigger (20%), the `[market]` index list, `[monitor]` flag thresholds, governance limits |
+| `thresholds.toml` | `[research] auto_confirm_checked`, limits (`max_stock_weight` 10%, `max_precious_metals_weight` 15%, `max_small_cap_weight` 60%, `max_sector_weight` 25%), loss trigger (20%), the `[market]` index list, `[monitor]` flag thresholds, governance limits |
 | `weights.toml` | Block weights, label cut-offs, confidence settings |
 | `valuation.toml` | DCF discount rate, terminal growth, growth caps |
 | `tax.toml` | STCG/LTCG rates, the exemption and the holding period, each with its official source URL |
@@ -171,7 +185,7 @@ CLAUDE.md                 workspace rules and investor profile (read by Claude)
 .claude/settings.json     permissions: order tools denied, core CLI allowed
 .claude/commands/         /sync /portfolio /report /sell-review /analyze /thesis /import
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary)
-.claude/agents/           filing-reader, governance-checker, news-summarizer (read-only)
+.claude/agents/           company-researcher, filing-reader, governance-checker, news-summarizer (read-only)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)
 src/isa/
   brokers/                5paisa read-only client, macOS Keychain access

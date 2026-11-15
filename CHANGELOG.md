@@ -2,6 +2,18 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-15
+
+### Added
+- **`/research`**: automated company data from companies' own websites.
+  - Gathers annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions and sector.
+  - Done by the new read-only `company-researcher` subagent.
+- **`check-facts`**: unit and consistency checks (EPS vs PAT ÷ shares, EBIT ≤ EBITDA ≤ revenue, % ranges, revenue jumps).
+- **`confirm-facts --source DOC`**: confirms a whole document, refusing any document with issues. `[research] auto_confirm_checked` (default true) confirms clean documents automatically.
+- **`research-targets`**: a work queue by portfolio weight.
+- **Exchange and aggregator domains** denied for WebFetch in settings, enforced by the guard.
+- 51 tests in total.
+
 ## [0.3.0] - 2026-11-15
 
 ### Added

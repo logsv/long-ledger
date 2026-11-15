@@ -96,9 +96,49 @@ def cmd_pending_facts(conn, cfg, args):
 
 
 def cmd_confirm_facts(conn, cfg, args):
+    if args.source:
+        res = facts.confirm_source(conn, args.source, require_checks=not args.skip_checks)
+        conn.commit()
+        return res
+    if not args.ids:
+        raise ValueError("give fact ids or --source DOCUMENT")
     n = facts.confirm_facts(conn, args.ids)
     conn.commit()
     return {"confirmed": n}
+
+
+def cmd_check_facts(conn, cfg, args):
+    issues = facts.check_facts(conn, args.symbol, args.source)
+    return {"issues": issues, "passed": not issues}
+
+
+def cmd_research_targets(conn, cfg, args):
+    """Work queue for /research: equity holdings (and watchlist) by weight, with data freshness."""
+    from .tax import build_lots
+    from .portfolio import portfolio_view
+    view = portfolio_view(conn, build_lots(conn, cfg.tax), cfg.thresholds)
+    watch = [r[0] for r in conn.execute("SELECT symbol FROM watchlist")]
+    rows = [h for h in view["holdings"] if not h["is_etf"]]
+    rows.sort(key=lambda h: -(h.get("weight") or 0))
+    held = {h["symbol"] for h in rows}
+    symbols = [h["symbol"] for h in rows] + [s for s in watch if s not in held]
+    out = []
+    for sym in symbols[: args.top]:
+        sec = conn.execute("SELECT name, isin FROM security WHERE symbol = ?", (sym,)).fetchone()
+        latest = conn.execute(
+            "SELECT MAX(period_end), MAX(published_at) FROM fundamental_fact WHERE symbol = ? AND metric = 'revenue'"
+            " AND (extracted_by != 'llm' OR confirmed = 1)", (sym,)).fetchone()
+        annual_years = conn.execute(
+            "SELECT COUNT(DISTINCT period_end) FROM fundamental_fact WHERE symbol = ? AND metric = 'revenue'",
+            (sym,)).fetchone()[0]
+        share_q = conn.execute(
+            "SELECT MAX(period_end) FROM fundamental_fact WHERE symbol = ? AND metric = 'promoter_pct'", (sym,)).fetchone()[0]
+        out.append({"symbol": sym, "name": sec["name"] if sec else None, "isin": sec["isin"] if sec else None,
+                    "weight": next((h["weight"] for h in rows if h["symbol"] == sym), None),
+                    "annual_years_stored": annual_years, "latest_annual_period": latest[0],
+                    "latest_shareholding_quarter": share_q,
+                    "needs": ("full history" if annual_years < 3 else "refresh if a newer annual report exists")})
+    return {"targets": out, "metrics": list(facts.METRICS)}
 
 
 def cmd_metrics(conn, cfg, args):
@@ -286,8 +326,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--as-of")
     s = sub.add_parser("pending-facts", help="LLM-extracted facts awaiting confirmation")
     s.add_argument("--symbol")
-    s = sub.add_parser("confirm-facts")
-    s.add_argument("ids", nargs="+", type=int)
+    s = sub.add_parser("confirm-facts", help="confirm pending facts by id, or a whole document with --source")
+    s.add_argument("ids", nargs="*", type=int)
+    s.add_argument("--source", help="confirm every pending fact from this document (only if checks pass)")
+    s.add_argument("--skip-checks", action="store_true")
+    s = sub.add_parser("check-facts", help="consistency checks on stored facts")
+    s.add_argument("--symbol")
+    s.add_argument("--source")
+    s = sub.add_parser("research-targets", help="work queue for /research")
+    s.add_argument("--top", type=int, default=20)
     sub.add_parser("metrics", help="list accepted fact metrics")
     s = sub.add_parser("security", help="set sector/industry/name for a stock")
     s.add_argument("symbol")

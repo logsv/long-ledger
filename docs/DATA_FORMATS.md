@@ -71,6 +71,11 @@ HDFCBANK,promoter_pct,2026-09-30,2026-10-15,0,shareholding Q2FY27
 - `--extracted-by llm` facts **must** have a `source_ref` and stay pending until `confirm-facts`.
 - For the same period, user and import figures take precedence over LLM figures.
 
+**Checks and confirmation:**
+- `check-facts [--symbol S] [--source DOC]` lists suspected extraction errors.
+- `confirm-facts --source DOC` confirms a whole document, only if it has no issues.
+- `/research` does both automatically when `[research] auto_confirm_checked = true`.
+
 Run `python3 tools/isa.py metrics` for the full catalogue:
 
 | Group | Metrics |

@@ -119,3 +119,74 @@ def confirm_facts(conn: sqlite3.Connection, ids: list[int]) -> int:
                symbol=row["symbol"])
         n += 1
     return n
+
+
+PCT_METRICS = {"promoter_pct", "promoter_pledge_pct", "fii_pct", "dii_pct", "mf_pct", "rpt_pct_revenue"}
+FLAG_METRICS = {"auditor_qualified", "auditor_resigned"}
+
+
+def check_facts(conn: sqlite3.Connection, symbol: str | None = None, source: str | None = None,
+                today: str | None = None) -> list[dict]:
+    """Consistency checks on facts (pending or confirmed). Returns issues; empty = passed.
+
+    Catches typical extraction mistakes: lakh vs crore, swapped columns,
+    standalone vs consolidated mix-ups, impossible percentages.
+    """
+    from datetime import date as _date
+    today = today or _date.today().isoformat()
+    q = "SELECT * FROM fundamental_fact WHERE 1=1"
+    args: list = []
+    if symbol:
+        q += " AND symbol = ?"
+        args.append(normalize_symbol(symbol))
+    if source:
+        q += " AND source = ?"
+        args.append(source)
+    rows = [dict(r) for r in conn.execute(q, args)]
+    issues: list[dict] = []
+
+    def issue(r, msg):
+        issues.append({"id": r["id"], "symbol": r["symbol"], "metric": r["metric"],
+                       "period_end": r["period_end"], "value": r["value"], "issue": msg})
+
+    by: dict[tuple, dict[str, dict]] = {}
+    for r in rows:
+        by.setdefault((r["symbol"], r["period_end"]), {})[r["metric"]] = r
+        if r["published_at"] > today:
+            issue(r, "published_at is in the future")
+        if r["metric"] in PCT_METRICS and not 0 <= r["value"] <= 100:
+            issue(r, "percentage outside 0-100")
+        if r["metric"] in FLAG_METRICS and r["value"] not in (0, 1):
+            issue(r, "flag must be 0 or 1")
+        if r["metric"] in ("capex", "shares_outstanding", "revenue") and r["value"] < 0:
+            issue(r, "must not be negative")
+    for (sym, period), m in by.items():
+        v = {k: x["value"] for k, x in m.items()}
+        if {"eps", "pat", "shares_outstanding"} <= v.keys() and v["shares_outstanding"] > 0 and v["eps"]:
+            implied = v["pat"] / v["shares_outstanding"]
+            if abs(implied - v["eps"]) > 0.15 * abs(v["eps"]) + 0.5:
+                issue(m["eps"], f"EPS {v['eps']} vs PAT/shares {implied:.2f}: check units (crore) or consolidated vs standalone")
+        for small, big in (("ebit", "ebitda"), ("ebitda", "revenue"), ("pat", "revenue")):
+            if small in v and big in v and v[big] > 0 and v[small] > v[big] * 1.05:
+                issue(m[small], f"{small} {v[small]} exceeds {big} {v[big]}")
+    series: dict[tuple, list] = {}
+    for r in rows:
+        if r["metric"] == "revenue":
+            series.setdefault((r["symbol"], r["source"]), []).append(r)
+    for lst in series.values():
+        lst.sort(key=lambda r: r["period_end"])
+        for a, b in zip(lst, lst[1:]):
+            if a["value"] > 0 and not 0.2 <= b["value"] / a["value"] <= 4:
+                issue(b, f"revenue jumps from {a['value']} to {b['value']}: possible unit error")
+    return issues
+
+
+def confirm_source(conn: sqlite3.Connection, source: str, require_checks: bool = True) -> dict:
+    """Confirm all pending facts from one document, optionally only if its checks pass."""
+    pending = [r["id"] for r in conn.execute(
+        "SELECT id FROM fundamental_fact WHERE source = ? AND confirmed = 0", (source,))]
+    if require_checks:
+        issues = check_facts(conn, source=source)
+        if issues:
+            return {"confirmed": 0, "pending": len(pending), "issues": issues}
+    return {"confirmed": confirm_facts(conn, pending), "pending": 0, "issues": []}

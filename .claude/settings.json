@@ -35,7 +35,14 @@
       "Read(.env.*)",
       "Read(**/creds.json)",
       "Bash(security find-generic-password:*)",
-      "Bash(security dump-keychain:*)"
+      "Bash(security dump-keychain:*)",
+      "WebFetch(domain:nseindia.com)",
+      "WebFetch(domain:bseindia.com)",
+      "WebFetch(domain:screener.in)",
+      "WebFetch(domain:tijorifinance.com)",
+      "WebFetch(domain:trendlyne.com)",
+      "WebFetch(domain:moneycontrol.com)",
+      "WebFetch(domain:tickertape.in)"
     ]
   }
 }
