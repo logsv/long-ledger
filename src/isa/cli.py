@@ -99,6 +99,18 @@ def cmd_import_indmoney_tax(conn, cfg, args):
     return res
 
 
+def cmd_import_5paisa_statement(conn, cfg, args):
+    from .importers import fivepaisa_tx
+    p = Path(args.file).expanduser()
+    name_map = Path(args.name_map).expanduser() if args.name_map else ROOT / "data" / "imports" / "name-map.csv"
+    res = fivepaisa_tx.import_statement(conn, p, name_map)
+    audit.append(conn, "import", {"kind": "fivepaisa_statement", "file": p.name,
+                                  **{k: v for k, v in res.items() if k != "unmatched_names"},
+                                  "unmatched": len(res["unmatched_names"])})
+    conn.commit()
+    return res
+
+
 def cmd_market(conn, cfg, args):
     run = service.run(conn, cfg, _as_of(args), record=False)
     return run["market"]
@@ -369,6 +381,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--map", help="JSON/CSV of ind_key -> symbol (or isin) from INDmoney's lookup tool")
     s = sub.add_parser("import-indmoney-tax", help="INDmoney consolidated tax report .xlsx: realised stock/ETF sales")
     s.add_argument("--file", required=True)
+    s = sub.add_parser("import-5paisa-statement", help="5paisa EQUITY Transaction .xlsx: splits, transfers, demergers, gap trades")
+    s.add_argument("--file", required=True)
+    s.add_argument("--name-map", help="CSV company_name,symbol for names that don't match (default data/imports/name-map.csv)")
     s = sub.add_parser("market", help="market regime: index trend, India VIX, breadth, sector rotation")
     s.add_argument("--as-of")
     s = sub.add_parser("pending-facts", help="LLM-extracted facts awaiting confirmation")

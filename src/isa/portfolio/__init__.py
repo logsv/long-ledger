@@ -164,9 +164,12 @@ def reconcile(conn: sqlite3.Connection, book: LotBook) -> list[dict]:
     starts = {r[0]: r[1] for r in conn.execute(
         "SELECT account, MIN(trade_date) FROM trade WHERE trade_id NOT LIKE 'indtax|%' GROUP BY account")}
     est: dict[str, int] = defaultdict(int)
+    xfer: dict[str, int] = defaultdict(int)
     for lot in book.open_lots:
-        if lot.estimated:
+        if lot.origin == "opening":
             est[lot.account] += 1
+        elif lot.origin in ("transfer_in", "demerger"):
+            xfer[lot.account] += 1
     for account in sorted(synced_sources):
         if account not in traded_accounts:
             extra = (" (its tax report covers only shares already sold)" if account in taxreport_accounts else "")
@@ -177,4 +180,8 @@ def reconcile(conn: sqlite3.Connection, book: LotBook) -> list[dict]:
             issues.append({"account": account, "symbol": None, "broker_quantity": None, "lot_quantity": None,
                            "hint": f"{est[account]} holdings include shares bought before {starts[account]}, the earliest "
                                    "imported trade: their buy dates are estimated (import older tradebooks)"})
+        if xfer.get(account):
+            issues.append({"account": account, "symbol": None, "broker_quantity": None, "lot_quantity": None,
+                           "hint": f"{xfer[account]} lots came in by off-market transfer or demerger: original buy "
+                                   "dates (and demerger costs) are unknown"})
     return issues

@@ -36,6 +36,25 @@ Each import is a snapshot for `as_of` (default: today) per source. Portfolio qua
 - Without a trade id, a stable id is derived, so re-importing the same file creates no duplicates.
 - Lots are matched FIFO **per account**, which defaults to the source.
 
+## 5paisa statement: `import-5paisa-statement --file EQUITY_Transaction_*.xlsx [--name-map CSV]`
+
+Columns: Transaction Date, Company Name, Exchange, Type, Quantity, Price, Remarks. There's no ISIN and no trade number, so it is used for events:
+
+| Remarks | Stored as |
+|---|---|
+| `Split - a:b` | `corporate_action` (ratio b/a). Lots bought before the ex-date are scaled in every account (quantity × ratio, cost ÷ ratio) |
+| `OffMarket-In` | Transfer-in lot: original buy date unknown (held at least since the transfer date), cost = statement price if above 0 |
+| `Demerger-In-a:b` | Demerger lot: date unknown, cost unknown (to be apportioned per the company's notice) |
+| `Buy Trade` / `Sell Trade` | Imported only for a (date, stock) with no Trade Listing trade |
+
+**Company names** are matched in this order:
+1. `name-map.csv`
+2. Exact normalised name.
+3. A unique prefix in either direction (5paisa cuts names to about 20 characters).
+4. A unique name containing all the words.
+
+Anything else is listed in `unmatched_names`.
+
 ## INDmoney tax report: `import-indmoney-tax --file consolidated_tax_report_<FY>.xlsx`
 
 - Reads the **Indian Stocks** and **Equity/Non-Equity ETFs** sections of the LTCG and STCG sheets. Each row (name, ISIN, redemption date, purchase date, units, per-unit sell and buy) becomes a BUY and a SELL for the `indmoney` account. The trade ids start `indtax|`, so re-imports are de-duplicated.

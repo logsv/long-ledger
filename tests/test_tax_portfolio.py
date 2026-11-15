@@ -157,3 +157,52 @@ class IndmoneyTaxReportTest(unittest.TestCase):
         self.assertEqual(opening.acquired_before, "2026-11-14")
         pan = conn.execute("SELECT COUNT(*) FROM trade WHERE trade_id LIKE '%ABCDE1234F%'").fetchone()[0]
         self.assertEqual(pan, 0)
+
+
+class CorporateActionTest(unittest.TestCase):
+    def test_split_scales_earlier_lots_and_opening_lot_units(self):
+        c = cfg()
+        conn = db()
+        # holding 100 today after a 1:2 split on 2026-07-01; history starts 2026-01-01
+        import_holdings(conn, [{"symbol": "SPL", "quantity": 100, "average_price": 50}], "fivepaisa", as_of="2026-11-14")
+        import_trades(conn, [trade("SPL", "sell", 10, 120, "2026-02-01", "1"),   # pre-split, old units
+                             trade("SPL", "buy", 20, 100, "2026-03-01", "2"),    # pre-split, old units
+                             trade("SPL", "buy", 10, 55, "2026-08-01", "3")], "fivepaisa")
+        conn.execute("INSERT INTO corporate_action(symbol, ex_date, kind, ratio, source) VALUES ('SPL','2026-07-01','split',2,'t')")
+        book = build_lots(conn, c.tax)
+        total = sum(l.quantity for l in book.open_lots)
+        self.assertAlmostEqual(total, 100)                       # reconciles in today's units
+        bought = next(l for l in book.open_lots if l.buy_date == "2026-03-01")
+        self.assertEqual((bought.quantity, bought.cost), (40, 50))  # 20 @100 -> 40 @50
+        self.assertFalse(book.errors)                            # the pre-split sell matched the opening lot
+        self.assertEqual(book.realised[0].quantity, 10)          # in old units, as traded
+
+    def test_statement_events(self):
+        import tempfile
+        from isa.importers.fivepaisa_tx import import_statement
+        conn = db()
+        import_securities(conn, [{"symbol": "SWELECTES", "name": "SWELECT ENERGY SYSTEMS LTD"},
+                                 {"symbol": "TDPOWERSYS", "name": "TD POWER SYSTEMS LTD"},
+                                 {"symbol": "NIFTYBEES", "name": "Nippon India ETF Nifty 50 BeES"},
+                                 {"symbol": "JUNIORBEES", "name": "Nippon India ETF Nifty Next 50 Junior BeES"}])
+        import_trades(conn, [trade("TDPOWERSYS", "buy", 5, 800, "2026-02-03", "T1")], "fivepaisa")
+        hdr = ["Transaction Date", "Company Name", "Exchange", "Type", "Quantity", "Price", "Tax/Charges",
+               "Brokerage", "Remarks"]
+        rows = [["EQUITY Transaction"], hdr,
+                ["2026-02-03", "TD Power Systems", "NSE", "Buy", "5", "800", "0", "0", "Buy Trade"],      # covered
+                ["2026-03-05", "Swelect Energy Syste", "NSE", "Buy", "7", "0", "0", "0", "OffMarket-In"],  # prefix
+                ["2026-08-24", "TD Power Systems", "NSE", "Buy", "5", "0", "0", "0", "Split - 1.00:2.00"],
+                ["2026-04-01", "Nifty BeES", "NSE", "Buy", "3", "250", "0", "0", "Buy Trade"],            # ambiguous
+                ["Statement generated as on ..."]]
+        with tempfile.TemporaryDirectory() as d:
+            import csv
+            with open(d + "/s.csv", "w", newline="") as fh:
+                csv.writer(fh).writerows(rows)
+            res = import_statement(conn, d + "/s.csv")
+        self.assertEqual((res["trades_already_covered"], res["transfers_in"], res["splits"]), (1, 1, 1))
+        self.assertEqual([u["name"] for u in res["unmatched_names"]], ["Nifty BeES"])  # two BeES ETFs: not guessed
+        book = build_lots(conn, cfg().tax)
+        x = next(l for l in book.open_lots if l.origin == "transfer_in")
+        self.assertEqual((x.symbol, x.acquired_before, x.cost_known), ("SWELECTES", "2026-03-06", False))
+        td = next(l for l in book.open_lots if l.symbol == "TDPOWERSYS")
+        self.assertEqual((td.quantity, td.cost), (10, 400))

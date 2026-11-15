@@ -22,7 +22,17 @@ Look at the name, header row or first page, then route it:
 `python3 tools/isa.py metrics` lists the accepted metric names and units: crore for amounts, plain numbers for percentages.
 
 **Spreadsheets:** `.xlsx` files are read directly; there's no need to convert them. Title rows above the header and footer lines are skipped.
-- **5paisa:** use the **Trade Listing** report (it has ISIN and trade numbers). Not the "EQUITY Transaction" report, which has neither, so it can't be matched or de-duplicated.
+- **5paisa Trade Listing** (`Tradelisting_*.xlsx`): `python3 tools/isa.py import-trades --source fivepaisa --file <f>`. It has ISINs and trade numbers, so these are the exact trades.
+- **5paisa EQUITY Transaction statement** (`EQUITY_Transaction_*.xlsx`): `python3 tools/isa.py import-5paisa-statement --file <f>`. Import it **after** the Trade Listing. It adds what the Trade Listing lacks:
+  - splits and bonuses, applied to lots in every account
+  - off-market transfers in (original buy date unknown)
+  - demerger shares (cost unknown)
+  - trades only for days the Trade Listing doesn't cover
+- **`unmatched_names`** from the statement: 5paisa shortens company names, and the importer never guesses between candidates.
+  1. Look each name up with `mcp__kite__search_instruments` (`filter_on: "name"`).
+  2. Show the candidates to the user, and write only the ones they confirm to `data/imports/name-map.csv` (`company_name,symbol`).
+  3. Re-run the statement import. Duplicates are skipped.
+  4. `data/imports/name-map.suggested.csv` may hold earlier suggestions; it is used only once the user copies confirmed rows into `name-map.csv`.
 - **INDmoney consolidated tax report** (`consolidated_tax_report_<FY>.xlsx`): run `python3 tools/isa.py import-indmoney-tax --file <f>`.
   - Each realised Indian stock or ETF sale becomes a buy and a sell with exact dates and prices.
   - Only the Indian Stocks and ETF sections are read. The client name and PAN header, mutual funds, US stocks and foreign-asset sheets are ignored.

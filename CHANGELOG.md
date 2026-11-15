@@ -2,6 +2,21 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-15
+
+### Added
+- **`import-5paisa-statement`:** the 5paisa EQUITY Transaction statement.
+  - **Splits and bonuses** are recorded as corporate actions (schema v3) and applied to lots in every account.
+  - **Off-market transfers in** become lots with an unknown original buy date.
+  - **Demerger shares** become lots with an unknown cost.
+  - **Trades** are added only for days the Trade Listing doesn't cover.
+  - **Company names** are matched deterministically, with an optional `name-map.csv`.
+- **Lot origins:** `trade`, `opening`, `transfer_in`, `demerger`. Reconciliation reports transfer and demerger lots separately.
+- **Tax view:** shows "cost unknown" for demerger lots.
+
+### Fixed
+- **Estimated opening lots** are now expressed in the share count of their date. Pre-split sells match them correctly, and later splits scale them.
+
 ## [0.5.1] - 2026-11-15
 
 ### Added

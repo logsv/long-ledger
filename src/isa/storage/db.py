@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Incremental migrations applied after the v1 SCHEMA, keyed by target version.
 MIGRATIONS: dict[int, list[str]] = {
@@ -14,6 +14,18 @@ MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE security ADD COLUMN market_cap_bucket TEXT",  # large | mid | small
         "ALTER TABLE security ADD COLUMN is_etf INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE security ADD COLUMN ind_key TEXT",            # INDmoney instrument key
+    ],
+    3: [  # corporate actions that change share counts (applied to lots in every account)
+        """CREATE TABLE IF NOT EXISTS corporate_action (
+            id        INTEGER PRIMARY KEY,
+            symbol    TEXT NOT NULL,
+            ex_date   TEXT NOT NULL,
+            kind      TEXT NOT NULL CHECK (kind IN ('split', 'bonus')),
+            ratio     REAL NOT NULL CHECK (ratio > 0),   -- new shares per old share, e.g. 2.0 for 1:2
+            source    TEXT NOT NULL,
+            note      TEXT,
+            UNIQUE (symbol, ex_date, kind)
+        )""",
     ],
 }
 

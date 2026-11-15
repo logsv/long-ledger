@@ -40,6 +40,8 @@ class Lot:
     # buy date is unknown (only "before acquired_before") and cost is the broker's average.
     estimated: bool = False
     acquired_before: str | None = None
+    cost_known: bool = True  # False for demerger shares (cost apportioned per company notice)
+    origin: str = "trade"    # trade | opening | transfer_in | demerger
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -66,6 +68,26 @@ class LotBook:
     errors: list[dict] = field(default_factory=list)  # sells without enough buys
 
 
+def _splits(conn: sqlite3.Connection) -> dict[str, list[tuple[str, float]]]:
+    out: dict[str, list[tuple[str, float]]] = {}
+    try:
+        rows = conn.execute("SELECT symbol, ex_date, ratio FROM corporate_action ORDER BY ex_date").fetchall()
+    except sqlite3.OperationalError:
+        return out
+    for s, d, r in rows:
+        out.setdefault(s, []).append((d, r))
+    return out
+
+
+def _factor_after(splits: list[tuple[str, float]], d: str) -> float:
+    """How many current shares one share held on date d has become."""
+    f = 1.0
+    for ex, r in splits:
+        if ex > d:
+            f *= r
+    return f
+
+
 def _opening_balances(conn: sqlite3.Connection, symbol: str | None) -> list[Lot]:
     """Shares in each broker's latest snapshot that the imported trades don't explain.
 
@@ -81,9 +103,11 @@ def _opening_balances(conn: sqlite3.Connection, symbol: str | None) -> list[Lot]
     # nothing about when the remaining shares were bought: they don't set a start date.
     starts = {r[0]: r[1] for r in conn.execute(
         "SELECT account, MIN(trade_date) FROM trade WHERE trade_id NOT LIKE 'indtax|%' GROUP BY account")}
-    net = {(r[0], r[1]): r[2] for r in conn.execute(
-        "SELECT account, symbol, SUM(CASE side WHEN 'BUY' THEN quantity ELSE -quantity END)"
-        " FROM trade GROUP BY account, symbol")}
+    splits = _splits(conn)
+    net: dict[tuple[str, str], float] = {}
+    for acct, sym, side, qty, d in conn.execute("SELECT account, symbol, side, quantity, trade_date FROM trade"):
+        f = _factor_after(splits.get(sym, []), d)  # express in today's share count
+        net[(acct, sym)] = net.get((acct, sym), 0.0) + (qty if side == "BUY" else -qty) * f
     out = []
     for s in snaps:
         if symbol and s["symbol"] != symbol:
@@ -94,8 +118,13 @@ def _opening_balances(conn: sqlite3.Connection, symbol: str | None) -> list[Lot]
             continue
         start = starts.get(acct) or s["as_of"]
         before = date.fromisoformat(start)
-        out.append(Lot(acct, s["symbol"], (before - timedelta(days=1)).isoformat(), gap,
-                       s["avg_price"] or 0.0, estimated=True, acquired_before=before.isoformat()))
+        lot_date = (before - timedelta(days=1)).isoformat()
+        # Express the lot in the share count of its own date, so pre-split sells match it
+        # correctly; later splits then scale it like any other lot.
+        f = _factor_after(splits.get(s["symbol"], []), lot_date)
+        out.append(Lot(acct, s["symbol"], lot_date, gap / f, (s["avg_price"] or 0.0) * f,
+                       estimated=True, acquired_before=before.isoformat(),
+                       cost_known=s["avg_price"] is not None, origin="opening"))
     return out
 
 
@@ -115,7 +144,7 @@ def build_lots(conn: sqlite3.Connection, tax_cfg: dict, symbol: str | None = Non
     held before the earliest imported trade (see _opening_balances).
     """
     months = int(tax_cfg["long_term_after_months"])
-    q = "SELECT account, symbol, side, quantity, price, trade_date, id FROM trade"
+    q = "SELECT account, symbol, side, quantity, price, trade_date, id, trade_id FROM trade"
     args: tuple = ()
     if symbol:
         q += " WHERE symbol = ?"
@@ -127,11 +156,34 @@ def build_lots(conn: sqlite3.Connection, tax_cfg: dict, symbol: str | None = Non
     if opening:
         for lot in _opening_balances(conn, symbol):
             queues.setdefault((lot.account, lot.symbol), []).append(lot)
+    splits = _splits(conn)
+    applied: dict[tuple[str, str], set] = {}
+
+    def apply_splits(key: tuple[str, str], up_to: str) -> None:
+        """Apply splits with ex_date <= up_to to lots bought before the ex-date."""
+        done = applied.setdefault(key, set())
+        for ex, r in splits.get(key[1], []):
+            if ex <= up_to and ex not in done:
+                for lot in queues.get(key, []):
+                    if lot.buy_date < ex:
+                        lot.quantity *= r
+                        lot.cost /= r
+                done.add(ex)
     for r in conn.execute(q, args):
         key = (r["account"], r["symbol"])
         queue = queues.setdefault(key, [])
+        apply_splits(key, r["trade_date"])
         if r["side"] == "BUY":
-            new = Lot(r["account"], r["symbol"], r["trade_date"], r["quantity"], r["price"])
+            tid = r["trade_id"] or ""
+            if tid.startswith("xfer|") or tid.startswith("demerger|"):
+                after = (date.fromisoformat(r["trade_date"]) + timedelta(days=1)).isoformat()
+                is_xfer = tid.startswith("xfer|")
+                new = Lot(r["account"], r["symbol"], r["trade_date"], r["quantity"], r["price"],
+                          estimated=True, acquired_before=after,
+                          cost_known=is_xfer and r["price"] > 0,
+                          origin="transfer_in" if is_xfer else "demerger")
+            else:
+                new = Lot(r["account"], r["symbol"], r["trade_date"], r["quantity"], r["price"])
             # keep the queue in buy-date order (an opening lot may be dated after some trades)
             pos = len(queue)
             while pos > 0 and queue[pos - 1].buy_date > new.buy_date:
@@ -160,6 +212,8 @@ def build_lots(conn: sqlite3.Connection, tax_cfg: dict, symbol: str | None = Non
             book.errors.append({"account": r["account"], "symbol": r["symbol"],
                                 "sell_date": r["trade_date"], "unmatched_quantity": remaining,
                                 "reason": "sell without earlier buys: import older tradebooks"})
+    for key in queues:
+        apply_splits(key, "9999-12-31")
     for queue in queues.values():
         book.open_lots.extend(lot for lot in queue if lot.quantity > 1e-9)
     return book
@@ -197,6 +251,10 @@ def tax_view(book: LotBook, prices: dict[str, float], today: date, tax_cfg: dict
                  "days_to_long_term": days, "price": price}
         if price is None:
             entry.update(unrealised_gain=None, est_tax_if_sold=None, note="no price")
+        elif not lot.cost_known:
+            entry.update(unrealised_gain=None, est_tax_if_sold=None,
+                         note=("demerger shares: cost to be apportioned per the company's notice"
+                               if lot.origin == "demerger" else "cost unknown"))
         else:
             gain = round(lot.quantity * (price - lot.cost), 2)
             entry["unrealised_gain"] = gain

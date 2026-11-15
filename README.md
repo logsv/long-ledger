@@ -71,7 +71,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 
 ## Status
 
-Version 0.5.1.
+Version 0.6.0.
 
 | Area | Status |
 |---|---|
@@ -98,7 +98,7 @@ Version 0.5.1.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 53 tests
+python3 -m unittest discover -s tests  # 55 tests
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -113,7 +113,9 @@ python3 tools/security_guards.py       # order tools blocked, secrets ignored
 
 **Trade history**, once: download into `data/imports/` and run `/import`. `.xlsx` and `.csv` files are read directly.
 - **Kite:** Console → Reports → Tradebook → Equity. One file per financial year, back to your oldest holding.
-- **5paisa:** the **Trade Listing** report (it has ISIN and trade numbers), back to your account opening.
+- **5paisa:**
+  - the **Trade Listing** report (exact trades, with ISIN and trade numbers), back to your account opening
+  - then the **EQUITY Transaction** statement, which adds splits, off-market transfers in and demerger shares
 - **INDmoney:** the **consolidated tax report** (.xlsx, one per financial year).
   - `/import` turns every realised Indian stock and ETF sale into a buy and a sell with exact dates.
   - Your name and PAN are never read.
@@ -167,6 +169,7 @@ python3 tools/isa.py report
 python3 tools/isa.py fivepaisa status           # then: fivepaisa login, fivepaisa sync
 python3 tools/isa.py import-classification --file data/imports/mcp/indmoney-networth-holdings-raw-<date>.json
 python3 tools/isa.py import-trades --source kite --file data/imports/tradebook.csv
+python3 tools/isa.py import-5paisa-statement --file data/imports/EQUITY_Transaction_<...>.xlsx
 python3 tools/isa.py import-indmoney-tax --file "data/imports/consolidated_tax_report_2026-27.xlsx"
 python3 tools/isa.py research-targets --top 20     # what /research will fetch next
 python3 tools/isa.py research-targets "Hero MotoCorp" SANGHVIMOV
