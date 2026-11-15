@@ -56,6 +56,10 @@ def render(run: dict) -> str:
            "Personal use only. Not investment or tax advice. Labels are computed by code from stored data; "
            "you place any order yourself.</p>"]
 
+    labelled = [s for s in sigs if s["label"] in ("BUY", "ACCUMULATE", "HOLD", "TRIM", "SELL")]
+    monitoring = not labelled
+    held_flags = {s["symbol"]: s.get("flags", []) for s in sigs if s["held"]}
+    flagged = sum(1 for f in held_flags.values() if f)
     counts: dict[str, int] = {}
     for s in sigs:
         counts[s["label"]] = counts.get(s["label"], 0) + 1
@@ -63,12 +67,15 @@ def render(run: dict) -> str:
     out.append(f"<div class='card kpi'><span class='muted'>Portfolio value</span><b>₹{_n(pv['total_value'])}</b></div>")
     out.append(f"<div class='card kpi'><span class='muted'>Holdings</span><b>{len(pv['holdings'])}</b></div>")
     out.append(f"<div class='card kpi'><span class='muted'>Top-5 weight</span><b>{_n(pv['top5_weight'], pct=True)}</b></div>")
-    out.append("<div class='card kpi'><span class='muted'>Labels</span><b>"
-               + escape(", ".join(f"{k} {v}" for k, v in sorted(counts.items()))) + "</b></div></div>")
+    if monitoring:
+        out.append(f"<div class='card kpi'><span class='muted'>Flagged holdings</span><b>{flagged} of {len(held_flags)}</b></div></div>")
+    else:
+        out.append("<div class='card kpi'><span class='muted'>Labels</span><b>"
+                   + escape(", ".join(f"{k} {v}" for k, v in sorted(counts.items()))) + "</b></div></div>")
 
     alerts = []
     for b in pv["breaches"]:
-        alerts.append(f"{b['type'].title()} {b['name']} is {b['weight']:.1%} of the portfolio (cap {b['cap']:.0%})")
+        alerts.append(f"{_breach_name(b)} is {b['weight']:.1%} of the portfolio (limit {b['cap']:.0%})")
     for r in pv["reconciliation"]:
         alerts.append(f"{r['account']}: {r['symbol'] or 'all'} - {r['hint']}")
     if pv["missing_price"]:
@@ -80,6 +87,10 @@ def render(run: dict) -> str:
         alerts.append(f"{run['pending_facts']} extracted facts await your confirmation (/import)")
     if alerts:
         out.append("<div class='card warn'><b>Needs attention</b>" + _list(alerts) + "</div>")
+    if monitoring:
+        out.append("<div class='card'><b>Monitoring mode.</b> Your brokers provide no company data (financials, "
+                   "valuation, shareholding), so BUY/SELL labels are off. Holdings below are sorted by risk flags; "
+                   "flags are prompts to review, not sell signals.</div>")
 
     mk = run.get("market") or {}
     if mk:
@@ -106,12 +117,26 @@ def render(run: dict) -> str:
             out.append(f"<tr><td>{escape(r['bucket'])}</td><td class='num'>{_n(r['weight'], pct=True)}</td></tr>")
         out.append("</table></div></div>")
 
-    out.append("<h2>Holdings</h2><div class='wrap'><table><tr><th>Stock</th><th class='num'>Value</th>"
-               "<th class='num'>Weight</th><th class='num'>P&amp;L</th><th>Label</th><th class='num'>Conf.</th>"
-               "<th>Why</th><th>Triggers / notes</th></tr>")
-    for h in pv["holdings"]:
-        s = by_sym.get(h["symbol"], {})
-        out.append(_row(h["symbol"], h, s))
+    flag_counts: dict[str, int] = {}
+    for fl in held_flags.values():
+        for f in fl:
+            flag_counts[f["type"]] = flag_counts.get(f["type"], 0) + 1
+    out.append("<h2>Holdings</h2>")
+    if flag_counts:
+        out.append("<p class='muted'>Flags: " + escape(" · ".join(
+            f"{FLAG_NAMES.get(k, k)} {v}" for k, v in sorted(flag_counts.items(), key=lambda kv: -kv[1]))) + "</p>")
+    holdings = sorted(pv["holdings"], key=lambda h: (-len(held_flags.get(h["symbol"], [])), -(h.get("weight") or 0)))
+    if monitoring:
+        out.append("<div class='wrap'><table><tr><th>Stock</th><th class='num'>Value</th><th class='num'>Weight</th>"
+                   "<th class='num'>P&amp;L</th><th>Status</th><th>Flags</th><th>Trend</th></tr>")
+        for h in holdings:
+            out.append(_monitor_row(h, by_sym.get(h["symbol"], {})))
+    else:
+        out.append("<div class='wrap'><table><tr><th>Stock</th><th class='num'>Value</th><th class='num'>Weight</th>"
+                   "<th class='num'>P&amp;L</th><th>Label</th><th class='num'>Conf.</th><th>Why</th>"
+                   "<th>Flags</th><th>Triggers / notes</th></tr>")
+        for h in holdings:
+            out.append(_row(h["symbol"], h, by_sym.get(h["symbol"], {})))
     out.append("</table></div>")
 
     watch = [s for s in sigs if not s["held"]]
@@ -122,8 +147,8 @@ def render(run: dict) -> str:
             why = s.get("why") or {}
             out.append(f"<tr><td>{escape(s['symbol'])}</td><td class='lbl {escape(s['label'])}'>{escape(s['label'])}</td>"
                        f"<td class='num'>{_n(s.get('confidence'))}</td>"
-                       f"<td>{_why(why)}</td>"
-                       f"<td>{_list([s.get('timing')] + s.get('notes', []))}</td></tr>")
+                       f"<td>{_why(why) if s['label'] != 'INSUFFICIENT_DATA' else 'no company data'}</td>"
+                       f"<td>{_list([s.get('timing')] + _flag_lines(s) + s.get('notes', []))}</td></tr>")
         out.append("</table></div>")
 
     if pv["sectors"]:
@@ -152,17 +177,47 @@ def render(run: dict) -> str:
     return "".join(out)
 
 
+FLAG_NAMES = {"weak_trend": "Weak trend", "deep_drawdown": "Deep drawdown",
+              "volume_spike": "Volume spike", "loss_from_cost": "Loss from cost"}
+
+
+def _breach_name(b: dict) -> str:
+    if b["type"] == "stock":
+        return f"Stock {b['name']}"
+    if b["type"] == "sector":
+        return f"Sector {b['name']}"
+    return b["name"].capitalize()
+
+
+def _flag_lines(s: dict) -> list[str]:
+    return [f"{FLAG_NAMES.get(f['type'], f['type'])}: {f['detail']}" for f in s.get("flags", [])]
+
+
+def _tag(h: dict) -> str:
+    return " · ".join(x for x in (h.get("asset_class"), h.get("market_cap_bucket")) if x and x != "unknown")
+
+
+def _monitor_row(h: dict, s: dict) -> str:
+    status = "ETF" if s.get("label") == "ETF" else "Monitor"
+    trend = {"weak": "Weak", "neutral": "Neutral", "strong": "Strong"}.get(
+        (s.get("technicals") or {}).get("stance"), "not enough history")
+    return (f"<tr><td>{escape(h['symbol'])}<div class='muted'>{escape(_tag(h) or h.get('sector') or '')}</div></td>"
+            f"<td class='num'>₹{_n(h.get('value'))}</td><td class='num'>{_n(h.get('weight'), pct=True)}</td>"
+            f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>"
+            f"<td class='muted'>{status}</td><td>{_list(_flag_lines(s)) or '<span class=muted>none</span>'}</td>"
+            f"<td class='muted'>{escape(trend)}</td></tr>")
+
+
 def _row(symbol: str, h: dict, s: dict) -> str:
     why = s.get("why") or {}
-    trig = ([f"{t['type']}: {t['detail']}" for t in s.get("triggers", [])]
-            + [f"flag {f['type']}: {f['detail']}" for f in s.get("flags", [])] + s.get("notes", []))
+    trig = [f"{t['type']}: {t['detail']}" for t in s.get("triggers", [])] + s.get("notes", [])
     if s.get("veto"):
         trig.append("governance: " + "; ".join(s["veto"]))
     label = s.get("label", "–")
-    tag = " · ".join(x for x in (h.get("asset_class"), h.get("market_cap_bucket")) if x and x != "unknown")
-    return (f"<tr><td>{escape(symbol)}<div class='muted'>{escape(tag or h.get('sector') or '')}</div></td>"
+    why_html = "no company data" if label == "INSUFFICIENT_DATA" else _why(why)
+    return (f"<tr><td>{escape(symbol)}<div class='muted'>{escape(_tag(h) or h.get('sector') or '')}</div></td>"
             f"<td class='num'>₹{_n(h.get('value'))}</td><td class='num'>{_n(h.get('weight'), pct=True)}</td>"
             f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>"
             f"<td class='lbl {escape(label)}'>{escape(label)}</td><td class='num'>{_n(s.get('confidence'))}</td>"
-            f"<td>{_why(why)}</td>"
+            f"<td>{why_html}</td><td>{_list(_flag_lines(s))}</td>"
             f"<td>{_list(trig)}</td></tr>")

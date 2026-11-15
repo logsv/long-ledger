@@ -133,6 +133,9 @@ class MonitorAndEtfTest(unittest.TestCase):
         html = render(run)
         self.assertIn("Regime:", html)
         self.assertIn("Allocation", html)
+        self.assertIn("Monitoring mode", html)          # no company data anywhere
+        self.assertNotIn("missing:", html)              # no per-row clutter
+        self.assertLess(html.index("FALLER"), html.index("GOLDCASE"))  # flagged stocks first
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@
 3. **Monitoring flags** (`flags`): `weak_trend`, `deep_drawdown`, `volume_spike`, `loss_from_cost`. List them per stock and call them **review prompts, not sell signals**.
    - `ETF` holdings get no company label. Show their timing and allocation only.
 4. For INSUFFICIENT_DATA, say what is missing, from `why.missing` or the low block completeness, and which `/import` would fix it.
-5. Confidence is out of 100. The sector and events blocks are not built yet, so confidence tops out at about 80 (70 without index data). Say this once. With broker data only, there is no company data, so stocks stay INSUFFICIENT_DATA. In that case present the market, allocation and flags as the main output.
+5. Confidence is out of 100. The sector and events blocks are not built yet, so confidence tops out at about 80 (70 without index data). Say this once. With broker data only, there is no company data, so stocks stay INSUFFICIENT_DATA. In that case present the market, allocation and flags as the main output. Don't list 'missing' lines per stock. Say once that company data is missing, then show flagged holdings first.
 6. End with: "Not investment or tax advice. Any order is yours to place in the broker app."
 7. If the user tells you what they did or decided, record it: `python3 tools/isa.py decision <SYMBOL> <bought|sold|trimmed|added|held|ignored|other> --note "<their words>"`.
 
