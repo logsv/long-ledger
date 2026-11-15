@@ -2,6 +2,11 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.6.2] - 2026-11-15
+
+### Added
+- **"Brokers" column** in the report's holdings table. It lists each broker holding the stock with its quantity, for example "Zerodha 340, INDmoney 377". The portfolio JSON gains `by_account`.
+
 ## [0.6.1] - 2026-11-15
 
 ### Fixed

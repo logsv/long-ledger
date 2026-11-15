@@ -5,4 +5,4 @@ workspace) fetches records, extracts facts from documents and explains the
 results, but never changes them.
 """
 
-ENGINE_VERSION = "0.6.1"
+ENGINE_VERSION = "0.6.2"

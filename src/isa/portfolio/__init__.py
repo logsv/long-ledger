@@ -47,22 +47,24 @@ def positions(conn: sqlite3.Connection, book: LotBook) -> dict[str, dict]:
     for r in latest_snapshots(conn):
         snap_sources.add(r["source"])
         p = pos.setdefault(r["symbol"], {"symbol": r["symbol"], "quantity": 0.0, "cost": 0.0,
-                                         "cost_known": True, "accounts": []})
+                                         "cost_known": True, "accounts": [], "by_account": {}})
         p["quantity"] += r["quantity"]
         if r["avg_price"] is None:
             p["cost_known"] = False
         else:
             p["cost"] += r["quantity"] * r["avg_price"]
         p["accounts"].append(r["source"])
+        p["by_account"][r["source"]] = p["by_account"].get(r["source"], 0.0) + r["quantity"]
     for lot in book.open_lots:
         if lot.account in snap_sources:
             continue
         p = pos.setdefault(lot.symbol, {"symbol": lot.symbol, "quantity": 0.0, "cost": 0.0,
-                                        "cost_known": True, "accounts": []})
+                                        "cost_known": True, "accounts": [], "by_account": {}})
         p["quantity"] += lot.quantity
         p["cost"] += lot.quantity * lot.cost
         if lot.account not in p["accounts"]:
             p["accounts"].append(lot.account)
+        p["by_account"][lot.account] = p["by_account"].get(lot.account, 0.0) + lot.quantity
     return pos
 
 

@@ -61,7 +61,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
   - FIFO lots per demat
   - STCG at 20% (s.196) and LTCG at 12.5% above ₹1.25 lakh (s.198), under the Income-tax Act, 2025
   - the long-term date for each lot, "wait until" hints, and the remaining exemption
-- **HTML report:** one self-contained file.
+- **HTML report:** one self-contained file. Each holding shows its company name, the brokers holding it with quantities, flags, trend and company-data coverage.
 - **Audit log:** append-only and hash-chained. Records every import, signal and decision.
 
 **For each company with confirmed data** (from `/research` or `/import`):
@@ -71,7 +71,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 
 ## Status
 
-Version 0.6.1.
+Version 0.6.2.
 
 | Area | Status |
 |---|---|
@@ -98,7 +98,7 @@ Version 0.6.1.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 57 tests
+python3 -m unittest discover -s tests  # 58 tests
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 

@@ -140,3 +140,18 @@ class MonitorAndEtfTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrokerColumnTest(unittest.TestCase):
+    def test_report_lists_brokers_with_quantities(self):
+        conn = db()
+        import_prices(conn, [{"date": "2026-11-13", "close": 100}], symbol="AAA", source="t")
+        import_holdings(conn, [{"symbol": "AAA", "quantity": 30, "average_price": 90}], "kite", as_of="2026-11-14")
+        import_holdings(conn, [{"symbol": "AAA", "quantity": 12, "average_price": 95}], "fivepaisa", as_of="2026-11-14")
+        run = service.run(conn, cfg(), AS_OF, record=False)
+        h = run["portfolio"]["holdings"][0]
+        self.assertEqual(h["by_account"], {"kite": 30, "fivepaisa": 12})
+        from isa.report import render
+        html = render(run)
+        self.assertIn("<th>Brokers</th>", html)
+        self.assertIn("Zerodha 30<br>5paisa 12", html)

@@ -139,12 +139,12 @@ def render(run: dict) -> str:
     holdings = sorted(pv["holdings"], key=lambda h: (-len(held_flags.get(h["symbol"], [])), -(h.get("weight") or 0)))
     if monitoring:
         out.append("<div class='wrap'><table><tr><th>Stock</th><th class='num'>Value</th><th class='num'>Weight</th>"
-                   "<th class='num'>P&amp;L</th><th>Status</th><th>Flags</th><th>Trend</th><th>Company data</th></tr>")
+                   "<th class='num'>P&amp;L</th><th>Brokers</th><th>Status</th><th>Flags</th><th>Trend</th><th>Company data</th></tr>")
         for h in holdings:
             out.append(_monitor_row(h, by_sym.get(h["symbol"], {}), run))
     else:
         out.append("<div class='wrap'><table><tr><th>Stock</th><th class='num'>Value</th><th class='num'>Weight</th>"
-                   "<th class='num'>P&amp;L</th><th>Label</th><th class='num'>Conf.</th><th>Why</th>"
+                   "<th class='num'>P&amp;L</th><th>Brokers</th><th>Label</th><th class='num'>Conf.</th><th>Why</th>"
                    "<th>Flags</th><th>Triggers / notes</th><th>Company data</th></tr>")
         for h in holdings:
             out.append(_row(h["symbol"], h, by_sym.get(h["symbol"], {}), run))
@@ -205,6 +205,19 @@ def _flag_lines(s: dict) -> list[str]:
     return [f"{FLAG_NAMES.get(f['type'], f['type'])}: {f['detail']}" for f in s.get("flags", [])]
 
 
+BROKER_NAMES = {"kite": "Zerodha", "fivepaisa": "5paisa", "indmoney": "INDmoney", "manual": "Manual"}
+
+
+def _broker_cell(h: dict) -> str:
+    """Each broker holding the stock, with its quantity (largest first)."""
+    by = h.get("by_account") or {a: None for a in h.get("accounts", [])}
+    if not by:
+        return "<td class='muted'>–</td>"
+    items = sorted(by.items(), key=lambda kv: -(kv[1] or 0))
+    lines = [f"{BROKER_NAMES.get(a, a)} {_n(q)}" if q is not None else BROKER_NAMES.get(a, a) for a, q in items]
+    return "<td>" + "<br>".join(escape(x) for x in lines) + "</td>"
+
+
 def _stock_cell(h: dict, run: dict) -> str:
     name = (run.get("names") or {}).get(h["symbol"]) or ""
     sub = " · ".join(x for x in (name.title() if name.isupper() else name, _tag(h)) if x)
@@ -235,7 +248,7 @@ def _monitor_row(h: dict, s: dict, run: dict) -> str:
         (s.get("technicals") or {}).get("stance"), "not enough history")
     return (f"<tr>{_stock_cell(h, run)}"
             f"<td class='num'>₹{_n(h.get('value'))}</td><td class='num'>{_n(h.get('weight'), pct=True)}</td>"
-            f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>"
+            f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>{_broker_cell(h)}"
             f"<td class='muted'>{status}</td><td>{_list(_flag_lines(s)) or '<span class=muted>none</span>'}</td>"
             f"<td class='muted'>{escape(trend)}</td>{_data_cell(h, run)}</tr>")
 
@@ -250,7 +263,7 @@ def _row(symbol: str, h: dict, s: dict, run: dict | None = None) -> str:
     why_html = "no company data" if label == "INSUFFICIENT_DATA" else _why(why)
     return (f"<tr>{_stock_cell(h, run)}"
             f"<td class='num'>₹{_n(h.get('value'))}</td><td class='num'>{_n(h.get('weight'), pct=True)}</td>"
-            f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>"
+            f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>{_broker_cell(h)}"
             f"<td class='lbl {escape(label)}'>{escape(label)}</td><td class='num'>{_n(s.get('confidence'))}</td>"
             f"<td>{why_html}</td><td>{_list(_flag_lines(s))}</td>"
             f"<td>{_list(trig)}</td>{_data_cell(h, run)}</tr>")

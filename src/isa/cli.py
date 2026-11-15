@@ -272,7 +272,7 @@ def cmd_portfolio(conn, cfg, args):
         "unclassified_assets": pv["unclassified_assets"],
         "holdings": [{k: h[k] for k in ("symbol", "quantity", "avg_cost", "price", "value", "weight",
                                         "unrealised_pct", "sector", "asset_class", "market_cap_bucket",
-                                        "accounts")} for h in pv["holdings"]],
+                                        "accounts", "by_account")} for h in pv["holdings"]],
         "signals": [service.summarize(s) for s in run["signals"]],
         "tax_waits": [l for l in run["tax"]["lots"] if l.get("wait_until")],
     }
