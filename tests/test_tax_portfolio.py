@@ -206,3 +206,14 @@ class CorporateActionTest(unittest.TestCase):
         self.assertEqual((x.symbol, x.acquired_before, x.cost_known), ("SWELECTES", "2026-03-06", False))
         td = next(l for l in book.open_lots if l.symbol == "TDPOWERSYS")
         self.assertEqual((td.quantity, td.cost), (10, 400))
+
+
+class NameMapTest(unittest.TestCase):
+    def test_two_column_name_map_loads(self):
+        import tempfile
+        from pathlib import Path
+        from isa.importers.fivepaisa_tx import load_name_map
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "name-map.csv"
+            p.write_text("company_name,symbol\nNifty BeES,NIFTYBEES\n")
+            self.assertEqual(load_name_map(p), {"nifty bees": "NIFTYBEES"})

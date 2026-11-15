@@ -54,8 +54,11 @@ def resolve_name(name: str, exact: dict, keys: list, name_map: dict[str, str]) -
 def load_name_map(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
+    import csv
     out = {}
-    for r in load_file(path):
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    for r in rows:
         name, sym = (r.get("company_name") or r.get("name") or "").strip(), (r.get("symbol") or "").strip().upper()
         if name and sym:
             out[name.lower()] = sym
