@@ -208,6 +208,32 @@ class CorporateActionTest(unittest.TestCase):
         self.assertEqual((td.quantity, td.cost), (10, 400))
 
 
+    def test_statement_name_map_symbol_not_yet_in_database(self):
+        import csv
+        import tempfile
+        from pathlib import Path
+        from isa.importers.fivepaisa_tx import import_statement
+        conn = db()
+        hdr = ["Transaction Date", "Company Name", "Exchange", "Type", "Quantity", "Price", "Tax/Charges",
+               "Brokerage", "Remarks"]
+        rows = [hdr,
+                ["2025-06-02", "Thermax", "NSE", "Buy", "4", "3500", "0", "0", "Buy Trade"],
+                ["2025-09-10", "Thermax", "NSE", "Sell", "4", "3700", "0", "0", "Sell Trade"],
+                ["2026-07-01", "Vedanta Power", "NSE", "Buy", "25", "0", "0", "0", "Demerger-In"]]
+        with tempfile.TemporaryDirectory() as d:
+            with open(d + "/s.csv", "w", newline="") as fh:
+                csv.writer(fh).writerows(rows)
+            m = Path(d) / "name-map.csv"
+            m.write_text("company_name,symbol\nThermax,thermax\nVedanta Power,VEDPOWER\n")
+            res = import_statement(conn, d + "/s.csv", m)
+            again = import_statement(conn, d + "/s.csv", m)
+        self.assertEqual((res["trades"], res["demergers"], res["unmatched_names"]), (2, 1, []))
+        self.assertEqual((again["trades"], again["duplicates"]), (0, 3))
+        syms = {r[0] for r in conn.execute("SELECT symbol FROM security")}
+        self.assertTrue({"THERMAX", "VEDPOWER"} <= syms)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM trade WHERE symbol = 'THERMAX'").fetchone()[0], 2)
+
+
 class NameMapTest(unittest.TestCase):
     def test_two_column_name_map_loads(self):
         import tempfile

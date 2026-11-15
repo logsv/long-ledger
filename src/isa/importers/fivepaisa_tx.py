@@ -16,6 +16,7 @@ import re
 import sqlite3
 from pathlib import Path
 
+from ..storage.db import ensure_security, normalize_symbol
 from .broker import _finish_import, _start_import
 from .classification import _norm_name
 from .common import ImportError_, load_file, parse_date, parse_number
@@ -89,6 +90,10 @@ def import_statement(conn: sqlite3.Connection, path, name_map_path: Path | None 
         if not sym:
             unmatched[name] = unmatched.get(name, 0) + 1
             continue
+        # A name-map symbol may not be in the database yet (often a stock already sold):
+        # register it so the trade and corporate_action foreign keys hold.
+        sym = normalize_symbol(sym)
+        ensure_security(conn, sym)
         low = remark.lower()
         if low.startswith("split") or low.startswith("bonus"):
             m = _RATIO.search(remark)
