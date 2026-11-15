@@ -60,6 +60,9 @@ flowchart LR
 | `engine/fundamentals.py` | Block (c): growth, ROE, ROCE, margins, leverage, coverage, cash conversion, FCF, working capital, payout |
 | `engine/governance.py` | Block (d): pledge, promoter and institutional trends, audit opinion, auditor resignation, related-party transactions, dilution. Produces vetoes |
 | `engine/valuation.py` | Block (e): P/E, P/B, EV/EBITDA percentiles vs own history; P/E vs peers; PEG; 2-stage DCF range |
+| `engine/market.py` | Block (a): index trend, India VIX percentile, holdings breadth, sector-index rotation. It only counts in the composite when a company block has data |
+| `engine/monitor.py` | Risk flags from price and position data: review prompts, never labels |
+| `importers/classification.py` | INDmoney asset class, market-cap bucket and ETF flag, matched by INDmoney key, ISIN or exact name |
 | `engine/technicals.py` | Block (f): DMAs, relative strength, drawdown, volume. Timing advice only |
 | `engine/scoring.py` | Composite, label, confidence, "why", sell triggers, thesis checks, signal recording |
 | `tax/` | FIFO lots per account, STCG/LTCG term, per-lot estimates, FY exemption usage |

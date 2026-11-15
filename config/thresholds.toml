@@ -3,6 +3,8 @@
 [portfolio]
 max_stock_weight = 0.10
 max_sector_weight = 0.25
+max_precious_metals_weight = 0.15   # gold + silver ETFs together (default, change as you like)
+max_small_cap_weight = 0.60         # small caps by value, using INDmoney's bucket (default)
 
 [sell_triggers]
 loss_threshold = 0.20              # loss of 20%+ ...
@@ -23,3 +25,18 @@ stagger_tranches = 3
 
 [tax_view]
 wait_window_days = 30              # suggest waiting if a lot turns long-term this soon
+
+[market]
+# Index series pulled from Kite (import with --index). Used for the market regime block.
+broad_index = "NIFTY 500"
+large_cap_index = "NIFTY 50"
+volatility_index = "INDIA VIX"
+sector_indices = ["NIFTY BANK", "NIFTY IT", "NIFTY AUTO", "NIFTY PHARMA", "NIFTY FMCG", "NIFTY METAL",
+                  "NIFTY ENERGY", "NIFTY REALTY", "NIFTY INFRA", "NIFTY PSU BANK", "NIFTY FIN SERVICE",
+                  "NIFTY MEDIA", "NIFTY CPSE", "NIFTY SMLCAP 100", "NIFTY MIDCAP 100"]
+vix_lookback_days = 365
+
+[monitor]
+drawdown_flag = 0.25        # flag if 25%+ below the 52-week high
+weak_rs_flag = -0.10        # flag if 6-month return trails the broad index by 10+ points
+volume_spike = 2.0          # flag if 20-day volume is 2x the 100-day average

@@ -70,15 +70,21 @@ def portfolio_view(conn: sqlite3.Connection, book: LotBook, thresholds: dict) ->
     caps = thresholds["portfolio"]
     prices = latest_prices(conn)
     pos = positions(conn, book)
-    sectors = {r["symbol"]: r["sector"] for r in conn.execute("SELECT symbol, sector FROM security")}
+    sec = {r["symbol"]: r for r in conn.execute(
+        "SELECT symbol, sector, asset_class, market_cap_bucket, is_etf FROM security")}
+    sectors = {s: r["sector"] for s, r in sec.items()}
     rows, total = [], 0.0
     for sym, p in sorted(pos.items()):
         price = prices.get(sym, (None, None))
         value = p["quantity"] * price[0] if price[0] else None
         if value:
             total += value
+        r = sec.get(sym)
         rows.append({**p, "price": price[0], "price_date": price[1], "value": value,
-                     "sector": sectors.get(sym) or "Unclassified"})
+                     "sector": sectors.get(sym) or "Unclassified",
+                     "asset_class": (r["asset_class"] if r and r["asset_class"] else "unknown"),
+                     "market_cap_bucket": (r["market_cap_bucket"] if r else None),
+                     "is_etf": bool(r and r["is_etf"])})
     by_sector: dict[str, float] = defaultdict(float)
     breaches = []
     for r in rows:
@@ -100,11 +106,32 @@ def portfolio_view(conn: sqlite3.Connection, book: LotBook, thresholds: dict) ->
         if name != "Unclassified" and w > caps["max_sector_weight"]:
             breaches.append({"type": "sector", "name": name, "weight": w,
                              "cap": caps["max_sector_weight"]})
+    by_asset: dict[str, float] = defaultdict(float)
+    by_cap: dict[str, float] = defaultdict(float)
+    for r in rows:
+        if r["value"]:
+            by_asset[r["asset_class"]] += r["value"]
+            if not r["is_etf"]:
+                by_cap[r["market_cap_bucket"] or "unknown"] += r["value"]
+    asset_rows = [{"asset_class": k, "value": v, "weight": v / total if total else 0.0}
+                  for k, v in sorted(by_asset.items(), key=lambda kv: -kv[1])]
+    cap_rows = [{"bucket": k, "value": v, "weight": v / total if total else 0.0}
+                for k, v in sorted(by_cap.items(), key=lambda kv: -kv[1])]
+    precious = sum(v for k, v in by_asset.items() if k in ("gold", "silver"))
+    if total and precious / total > caps["max_precious_metals_weight"]:
+        breaches.append({"type": "asset_class", "name": "gold + silver", "weight": precious / total,
+                         "cap": caps["max_precious_metals_weight"]})
+    if total and by_cap.get("small", 0) / total > caps["max_small_cap_weight"]:
+        breaches.append({"type": "market_cap", "name": "small caps", "weight": by_cap["small"] / total,
+                         "cap": caps["max_small_cap_weight"]})
     weights = sorted((r["weight"] for r in rows if r["weight"]), reverse=True)
     return {
         "total_value": total,
         "holdings": rows,
         "sectors": sector_rows,
+        "asset_classes": asset_rows,
+        "market_caps": cap_rows,
+        "unclassified_assets": [r["symbol"] for r in rows if r["asset_class"] == "unknown"],
         "top5_weight": sum(weights[:5]),
         "breaches": breaches,
         "missing_price": [r["symbol"] for r in rows if r["price"] is None],

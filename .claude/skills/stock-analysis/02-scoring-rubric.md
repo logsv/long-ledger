@@ -7,7 +7,8 @@
 | Fundamentals (c) | 0.30 | built |
 | Governance (d) | 0.20 | built; a red flag vetoes BUY/ACCUMULATE |
 | Valuation (e) | 0.20 | built |
-| Macro (a), Sector (b), Events (g) | 0.10 each | not built yet |
+| Macro (a) | 0.10 | built from Kite index and India VIX data plus holdings breadth. **Counts only when a company block has data**; market data alone never makes a label |
+| Sector (b), Events (g) | 0.10 each | not built yet |
 | Technicals (f) | 0 | timing advice only |
 
 **Composite.** The weighted mean over blocks with at least 30% completeness. If no block reaches that, the label is INSUFFICIENT_DATA.
@@ -26,6 +27,17 @@
 - **Coverage:** the share of all block weight that had data. It is at most 0.7 until the Phase 2 blocks exist.
 - **Agreement:** the share of blocks pointing the same way as the composite.
 - **Freshness:** 0.7 if there is no filing in about 15 months; 0.8 if the price is more than 7 days old.
+
+**ETF label.** Holdings that INDmoney tags as gold, silver or liquid, or whose name contains ETF or BeES, are labelled `ETF`. Company scoring does not apply to them.
+
+**Monitoring flags** (review prompts, not signals; thresholds in the `[monitor]` table of `config/thresholds.toml`):
+
+| Flag | When it appears |
+|---|---|
+| `weak_trend` | Below the 200-DMA and trailing the broad index by 10 or more points over 6 months |
+| `deep_drawdown` | 25% or more below the 52-week high |
+| `volume_spike` | 20-day volume at least 2× the 100-day average |
+| `loss_from_cost` | Down 20% or more from your average cost |
 
 **Sell triggers (held stocks only):**
 

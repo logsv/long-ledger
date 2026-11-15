@@ -2,6 +2,21 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-15
+
+### Added
+- **Broker-only monitoring.** Data comes only from Kite, INDmoney and 5paisa.
+  - **Classification from INDmoney** (`import-classification`): asset class, market-cap bucket and ETF flag for every holding across brokers. Rows are matched by stored INDmoney key, ISIN mapping or exact company name.
+  - **Market regime block (a)** from Kite index data: NIFTY 500 and NIFTY 50 against their 200-DMA, India VIX percentile, breadth of your holdings, and sector-index rotation. It counts in the composite only when company data exists.
+  - **Monitoring flags:** `weak_trend`, `deep_drawdown`, `volume_spike`, `loss_from_cost`. These are review prompts, never labels.
+  - **ETF label** for gold, silver, liquid and index ETFs.
+  - **New caps:** gold + silver at 15% and small caps at 60% (defaults in `config/thresholds.toml`).
+  - **Report:** market and allocation sections.
+- `/sync` now also pulls index and VIX history and INDmoney's classification.
+- `market` CLI command.
+- Schema v2 with automatic migration.
+- 48 tests in total.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added

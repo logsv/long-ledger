@@ -42,6 +42,13 @@ Columns: `date, open, high, low, close, volume`. Kite's raw candle arrays `[date
 - Use `--index` for an index such as `NIFTY 500`, which enables relative strength.
 - A file with a `symbol` column can hold several stocks; leave out `--symbol`.
 
+## Classification: `import-classification --file <INDmoney reply> [--map keys.json]`
+
+Pass INDmoney's net-worth/holdings MCP reply as saved: either `{"result": "<json>"}` or JSON with a `holdings` list. Each row has `investment_code`, `investment`, `assetclass_l2` and `market_cap`.
+- Rows are matched to your securities by a stored INDmoney key, by `--map` (`[{"ind_key", "symbol" | "isin"}]`, built with INDmoney's lookup tool), or by an exact company name.
+- Unmatched rows are listed, never guessed.
+- ETFs (non-equity asset class, or a name containing ETF or BeES) get `is_etf = 1` and no market-cap bucket.
+
 ## Securities: `import-securities`
 
 Columns: `symbol, isin, name, exchange, sector, industry`.

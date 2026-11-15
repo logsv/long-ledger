@@ -15,7 +15,7 @@ from pathlib import Path
 from . import audit, service
 from .config import ROOT, Config, db_path, load_dotenv
 from .engine import scoring
-from .importers import broker, facts, market
+from .importers import broker, classification, facts, market
 from .importers.common import ImportError_, load_records, parse_date
 from .report import render
 from .storage.db import connect, ensure_security, normalize_symbol
@@ -73,6 +73,22 @@ def cmd_import_securities(conn, cfg, args):
 
 def cmd_import_facts(conn, cfg, args):
     return _import(conn, "facts", facts.import_facts, args, source=args.source, extracted_by=args.extracted_by)
+
+
+def cmd_import_classification(conn, cfg, args):
+    text, name = _read_input(args.file)
+    records = classification.parse_networth(text)
+    mapping = load_records(Path(args.map).expanduser().read_text(encoding="utf-8")) if args.map else None
+    res = classification.import_classification(conn, records, mapping, file_name=name)
+    audit.append(conn, "import", {"kind": "classification", "file": name, "classified": res["classified"],
+                                  "unmatched": len(res["unmatched"])})
+    conn.commit()
+    return res
+
+
+def cmd_market(conn, cfg, args):
+    run = service.run(conn, cfg, _as_of(args), record=False)
+    return run["market"]
 
 
 def cmd_pending_facts(conn, cfg, args):
@@ -153,8 +169,13 @@ def cmd_portfolio(conn, cfg, args):
         "breaches": pv["breaches"], "reconciliation": pv["reconciliation"],
         "missing_price": pv["missing_price"], "unclassified": pv["unclassified"],
         "pending_facts": run["pending_facts"],
+        "market": {k: run["market"][k] for k in ("regime", "indices", "breadth", "missing")}
+                  | {"sector_leaders": run["market"]["sectors"][:3], "sector_laggards": run["market"]["sectors"][-3:]},
+        "asset_classes": pv["asset_classes"], "market_caps": pv["market_caps"],
+        "unclassified_assets": pv["unclassified_assets"],
         "holdings": [{k: h[k] for k in ("symbol", "quantity", "avg_cost", "price", "value", "weight",
-                                        "unrealised_pct", "sector", "accounts")} for h in pv["holdings"]],
+                                        "unrealised_pct", "sector", "asset_class", "market_cap_bucket",
+                                        "accounts")} for h in pv["holdings"]],
         "signals": [service.summarize(s) for s in run["signals"]],
         "tax_waits": [l for l in run["tax"]["lots"] if l.get("wait_until")],
     }
@@ -258,6 +279,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--source", required=True, help="e.g. screener-export, annual-report-FY26")
     s.add_argument("--extracted-by", choices=facts.EXTRACTED_BY, default="import")
     s.add_argument("--file")
+    s = sub.add_parser("import-classification", help="INDmoney net-worth/holdings reply: asset class, market cap, ETF")
+    s.add_argument("--file")
+    s.add_argument("--map", help="JSON/CSV of ind_key -> symbol (or isin) from INDmoney's lookup tool")
+    s = sub.add_parser("market", help="market regime: index trend, India VIX, breadth, sector rotation")
+    s.add_argument("--as-of")
     s = sub.add_parser("pending-facts", help="LLM-extracted facts awaiting confirmation")
     s.add_argument("--symbol")
     s = sub.add_parser("confirm-facts")

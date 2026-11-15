@@ -6,7 +6,8 @@ import sqlite3
 from datetime import date
 
 from .config import Config
-from .engine import scoring
+from .engine import market, scoring
+from .engine.base import Data
 from .portfolio import portfolio_view
 from .tax import build_lots, tax_view
 
@@ -24,10 +25,13 @@ def run(conn: sqlite3.Connection, cfg: Config, as_of: date | None = None,
     book = build_lots(conn, cfg.tax)
     view = portfolio_view(conn, book, cfg.thresholds)
     held = {h["symbol"]: h for h in view["holdings"]}
+    etfs = {r[0] for r in conn.execute("SELECT symbol FROM security WHERE is_etf = 1")}
+    macro, market_info = market.evaluate(Data(conn, as_of), cfg.thresholds,
+                                         [s for s in held if s not in etfs])
     targets = symbols or universe(conn, view)
     signals = []
     for sym in targets:
-        res = scoring.evaluate(conn, cfg, sym, as_of, position=held.get(sym))
+        res = scoring.evaluate(conn, cfg, sym, as_of, position=held.get(sym), market_block=macro)
         if record:
             res["signal_id"] = scoring.record(conn, res)
         signals.append(res)
@@ -37,7 +41,7 @@ def run(conn: sqlite3.Connection, cfg: Config, as_of: date | None = None,
     taxes = tax_view(book, prices, as_of, cfg.tax, int(cfg.thresholds["tax_view"]["wait_window_days"]))
     pending = conn.execute("SELECT COUNT(*) FROM fundamental_fact WHERE confirmed = 0").fetchone()[0]
     return {"as_of": as_of.isoformat(), "portfolio": view, "signals": signals, "tax": taxes,
-            "pending_facts": pending}
+            "pending_facts": pending, "market": market_info}
 
 
 def summarize(signal: dict) -> dict:
@@ -47,5 +51,7 @@ def summarize(signal: dict) -> dict:
         "composite": signal.get("composite"), "held": signal["held"],
         "why": signal.get("why"), "triggers": [f"{t['type']}: {t['detail']}" for t in signal.get("triggers", [])],
         "veto": signal.get("veto"), "timing": signal.get("timing"), "notes": signal.get("notes", []),
+        "flags": [f"{f['type']}: {f['detail']}" for f in signal.get("flags", [])],
+        "asset_class": signal.get("asset_class"), "market_cap_bucket": signal.get("market_cap_bucket"),
         "intrinsic_value": signal["blocks"]["valuation"].get("extra", {}).get("intrinsic_value"),
     }

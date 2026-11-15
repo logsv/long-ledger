@@ -19,7 +19,7 @@ border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0}
 .wrap{overflow-x:auto}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--muted);font-weight:600}.num{text-align:right;font-variant-numeric:tabular-nums}
 .lbl{font-weight:700}.BUY{color:var(--buy)}.ACCUMULATE{color:var(--acc)}.HOLD{color:var(--hold)}
-.TRIM{color:var(--trim)}.SELL{color:var(--sell)}.INSUFFICIENT_DATA{color:var(--na)}
+.TRIM{color:var(--trim)}.SELL{color:var(--sell)}.INSUFFICIENT_DATA,.ETF{color:var(--na)}
 ul{margin:4px 0 0 18px;padding:0}.warn{border-left:3px solid var(--trim)}
 """
 
@@ -73,12 +73,38 @@ def render(run: dict) -> str:
         alerts.append(f"{r['account']}: {r['symbol'] or 'all'} - {r['hint']}")
     if pv["missing_price"]:
         alerts.append("No price for: " + ", ".join(pv["missing_price"]))
-    if pv["unclassified"]:
-        alerts.append("No sector for: " + ", ".join(pv["unclassified"]))
+    if pv.get("unclassified_assets"):
+        alerts.append(f"{len(pv['unclassified_assets'])} holdings not yet classified by INDmoney "
+                      "(asset class / market cap): run /sync")
     if run["pending_facts"]:
         alerts.append(f"{run['pending_facts']} extracted facts await your confirmation (/import)")
     if alerts:
         out.append("<div class='card warn'><b>Needs attention</b>" + _list(alerts) + "</div>")
+
+    mk = run.get("market") or {}
+    if mk:
+        lines = [e["text"] for e in (mk.get("block") or {}).get("evidence", [])]
+        if mk.get("missing"):
+            lines.append("Missing index data: " + ", ".join(mk["missing"]))
+        out.append(f"<h2>Market</h2><div class='card'><b>Regime: {escape(str(mk.get('regime')))}</b>"
+                   + _list(lines) + "</div>")
+        if mk.get("sectors"):
+            out.append("<div class='wrap'><table><tr><th>Sector index</th><th class='num'>3 months</th>"
+                       "<th class='num'>6 months</th></tr>")
+            for s in mk["sectors"]:
+                out.append(f"<tr><td>{escape(s['index'])}</td><td class='num'>{_n(s['ret_3m'], pct=True)}</td>"
+                           f"<td class='num'>{_n(s.get('ret_6m'), pct=True)}</td></tr>")
+            out.append("</table></div>")
+
+    if pv.get("asset_classes"):
+        out.append("<h2>Allocation</h2><div class='grid'><div class='wrap'><table><tr><th>Asset class</th>"
+                   "<th class='num'>Weight</th></tr>")
+        for r in pv["asset_classes"]:
+            out.append(f"<tr><td>{escape(r['asset_class'])}</td><td class='num'>{_n(r['weight'], pct=True)}</td></tr>")
+        out.append("</table></div><div class='wrap'><table><tr><th>Market cap (stocks)</th><th class='num'>Weight</th></tr>")
+        for r in pv.get("market_caps", []):
+            out.append(f"<tr><td>{escape(r['bucket'])}</td><td class='num'>{_n(r['weight'], pct=True)}</td></tr>")
+        out.append("</table></div></div>")
 
     out.append("<h2>Holdings</h2><div class='wrap'><table><tr><th>Stock</th><th class='num'>Value</th>"
                "<th class='num'>Weight</th><th class='num'>P&amp;L</th><th>Label</th><th class='num'>Conf.</th>"
@@ -128,11 +154,13 @@ def render(run: dict) -> str:
 
 def _row(symbol: str, h: dict, s: dict) -> str:
     why = s.get("why") or {}
-    trig = [f"{t['type']}: {t['detail']}" for t in s.get("triggers", [])] + s.get("notes", [])
+    trig = ([f"{t['type']}: {t['detail']}" for t in s.get("triggers", [])]
+            + [f"flag {f['type']}: {f['detail']}" for f in s.get("flags", [])] + s.get("notes", []))
     if s.get("veto"):
         trig.append("governance: " + "; ".join(s["veto"]))
     label = s.get("label", "–")
-    return (f"<tr><td>{escape(symbol)}<div class='muted'>{escape(h.get('sector') or '')}</div></td>"
+    tag = " · ".join(x for x in (h.get("asset_class"), h.get("market_cap_bucket")) if x and x != "unknown")
+    return (f"<tr><td>{escape(symbol)}<div class='muted'>{escape(tag or h.get('sector') or '')}</div></td>"
             f"<td class='num'>₹{_n(h.get('value'))}</td><td class='num'>{_n(h.get('weight'), pct=True)}</td>"
             f"<td class='num'>{_n(h.get('unrealised_pct'), pct=True)}</td>"
             f"<td class='lbl {escape(label)}'>{escape(label)}</td><td class='num'>{_n(s.get('confidence'))}</td>"

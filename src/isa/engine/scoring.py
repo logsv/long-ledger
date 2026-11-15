@@ -10,10 +10,11 @@ from datetime import date, timedelta
 from .. import ENGINE_VERSION
 from ..audit import append, now_utc
 from ..config import Config
-from . import fundamentals, governance, technicals, valuation
+from . import fundamentals, governance, monitor, technicals, valuation
 from .base import BlockResult, Data
 
-LABELS = ("BUY", "ACCUMULATE", "HOLD", "TRIM", "SELL", "INSUFFICIENT_DATA")
+LABELS = ("BUY", "ACCUMULATE", "HOLD", "TRIM", "SELL", "INSUFFICIENT_DATA", "ETF")
+COMPANY_BLOCKS = ("fundamentals", "governance", "valuation")
 _SEVERITY = {"BUY": 0, "ACCUMULATE": 1, "HOLD": 2, "TRIM": 3, "SELL": 4}
 PHASE2_BLOCKS = ("macro", "sector", "events")
 
@@ -71,21 +72,42 @@ def _check_thesis(conn: sqlite3.Connection, symbol: str, metrics: dict) -> list[
 
 
 def evaluate(conn: sqlite3.Connection, cfg: Config, symbol: str, as_of: date,
-             position: dict | None = None) -> dict:
-    """Score one stock as of a date. position = portfolio row if held."""
+             position: dict | None = None, market_block: BlockResult | None = None) -> dict:
+    """Score one stock as of a date. position = portfolio row if held.
+
+    market_block (block a) is shared by all stocks in a run. It only counts
+    when at least one company block has data: price and market data alone
+    never produce a BUY/SELL label.
+    """
     d = Data(conn, as_of)
     blocks = _blocks(d, symbol, cfg)
     w = cfg.weights["weights"]
     conf_cfg = cfg.weights["confidence"]
     min_c = conf_cfg["min_block_completeness"]
     used = {n: b for n, b in blocks.items() if b.score is not None and b.completeness >= min_c}
+    if used and market_block is not None and market_block.score is not None \
+            and market_block.completeness >= min_c:
+        used["macro"] = market_block
     tech = technicals.evaluate(d, symbol, cfg.thresholds)
+    sec = conn.execute("SELECT is_etf, asset_class, market_cap_bucket FROM security WHERE symbol = ?",
+                       (symbol,)).fetchone()
+    not_built = [b for b in PHASE2_BLOCKS if not (b == "macro" and market_block is not None)]
 
     result: dict = {
         "symbol": symbol, "as_of": as_of.isoformat(), "engine_version": ENGINE_VERSION,
         "blocks": {n: b.to_dict() for n, b in blocks.items()},
-        "blocks_not_built": list(PHASE2_BLOCKS), "technicals": tech, "held": bool(position),
+        "blocks_not_built": not_built, "technicals": tech, "held": bool(position),
+        "asset_class": sec["asset_class"] if sec else None,
+        "market_cap_bucket": sec["market_cap_bucket"] if sec else None,
+        "flags": monitor.flags(d, symbol, tech, cfg.thresholds, position),
     }
+
+    if sec and sec["is_etf"]:
+        result.update(label="ETF", composite=None, confidence=0.0, triggers=[], veto=[],
+                      why={"positive": [], "negative": [], "missing": []},
+                      notes=["ETF: company analysis does not apply; see asset-class limits and timing"])
+        result["inputs_hash"] = _hash(result, cfg)
+        return result
 
     if not used:
         result.update(label="INSUFFICIENT_DATA", composite=None, confidence=0.0,

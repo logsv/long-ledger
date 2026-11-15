@@ -18,21 +18,25 @@ A personal-use analysis workspace for long-term investors in Indian equities (NS
   - valuation stretched above intrinsic value
 
   A loss on its own never triggers a sell.
-- **Portfolio view.** Weights, sector exposure, cap breaches (10% per stock, 25% per sector) and broker reconciliation.
+- **Portfolio view.** Weights, allocation by asset class and market cap (from INDmoney), and cap breaches. The caps are 10% per stock, gold + silver 15%, small caps 60%, and 25% per sector when sectors exist. Also broker reconciliation.
+- **Market and monitoring.** A market regime from Kite index and India VIX data, sector-index rotation, and per-stock risk flags: weak trend, deep drawdown, volume spike, loss from cost. Flags are review prompts, not signals.
 - **Tax view.** FIFO lots per demat, STCG/LTCG under the Income-tax Act, 2025 (s.196 / s.198), the long-term date per lot, "wait until" hints and the remaining LTCG exemption.
 - **Audit log.** Append-only and hash-chained. Records every import, signal and decision.
 - **HTML report.** A single self-contained file.
 
 ## Status
 
-Version 0.2.0.
+Version 0.3.0.
 
 | Area | Status |
 |---|---|
 | Kite and INDmoney sync via MCP | Built (`/sync`). INDmoney tool names are discovered at sign-in. |
 | 5paisa | Built: read-only API (`fivepaisa login` / `sync`) for holdings, today's trades and daily prices. Older trades come from tradebook CSV. |
 | Fundamentals, governance, valuation blocks | Built |
-| Macro, sector and events blocks | Planned. Until then confidence tops out at about 70/100. |
+| Market regime (macro) block | Built from Kite index and India VIX data plus holdings breadth. Used only alongside company data |
+| Broker-only monitoring | Built: INDmoney asset class and market cap, ETF label, risk flags, gold/silver and small-cap caps |
+| Company data (financials, sector) | Not provided by Kite, 5paisa or INDmoney. Stocks stay INSUFFICIENT_DATA until a company-data source or manual imports are added |
+| Sector and events blocks | Planned |
 | CAS PDF parsing | Planned. Use broker tradebooks for now. |
 | Loss set-off, 2018 grandfathering, STT | Not modelled. Tax figures are gross estimates. |
 | Backtesting | Planned |
@@ -48,7 +52,7 @@ Version 0.2.0.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db
-python3 -m unittest discover -s tests  # 41 tests
+python3 -m unittest discover -s tests  # 48 tests
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 

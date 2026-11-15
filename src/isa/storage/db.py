@@ -5,7 +5,17 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# Incremental migrations applied after the v1 SCHEMA, keyed by target version.
+MIGRATIONS: dict[int, list[str]] = {
+    2: [  # broker-supplied classification (INDmoney)
+        "ALTER TABLE security ADD COLUMN asset_class TEXT",        # equity | gold | silver | liquid | ...
+        "ALTER TABLE security ADD COLUMN market_cap_bucket TEXT",  # large | mid | small
+        "ALTER TABLE security ADD COLUMN is_etf INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE security ADD COLUMN ind_key TEXT",            # INDmoney instrument key
+    ],
+}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS security (
@@ -159,10 +169,16 @@ def migrate(conn: sqlite3.Connection) -> None:
         raise RuntimeError(
             f"database schema v{version} is newer than this code (v{SCHEMA_VERSION})"
         )
-    if version < SCHEMA_VERSION:
+    if version == SCHEMA_VERSION:
+        return
+    if version == 0:
         conn.executescript(SCHEMA)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        conn.commit()
+        version = 1
+    for v in range(version + 1, SCHEMA_VERSION + 1):
+        for stmt in MIGRATIONS[v]:
+            conn.execute(stmt)
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    conn.commit()
 
 
 def ensure_security(conn: sqlite3.Connection, symbol: str, **fields) -> None:
