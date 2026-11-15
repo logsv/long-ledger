@@ -43,7 +43,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
   - gold + silver 15%
   - small caps 60%
   - 25% per sector, when sectors are known
-- Broker reconciliation: broker quantities compared with your imported trade history.
+- Broker reconciliation: each broker's quantity per stock compared with your imported trade history. Gaps are explained (estimated opening lots, transfers) instead of left as mismatches.
 
 **Risk flags per stock.** These are review prompts, not sell signals.
 
@@ -58,9 +58,20 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 - **ETF label** for gold, silver, liquid and index ETFs, which company analysis doesn't apply to.
 - **Timing view:** 50/200-day averages, relative strength, support and resistance, drawdown.
 - **Tax view:**
-  - FIFO lots per demat
+  - FIFO lots per demat; a sale only matches shares bought on or before its date
   - STCG at 20% (s.196) and LTCG at 12.5% above ₹1.25 lakh (s.198), under the Income-tax Act, 2025
   - the long-term date for each lot, "wait until" hints, and the remaining exemption
+  - stock splits and bonuses applied to earlier lots in every account
+  - each lot shows where it came from:
+
+    | Lot origin | Meaning |
+    |---|---|
+    | `trade` | An exact buy from a tradebook |
+    | `opening` | Bought before your earliest imported trade; shown as "before <date>" |
+    | `transfer_in` | Moved in off-market; the original buy date is unknown |
+    | `demerger` | Shares from a demerger; cost to be apportioned per the company's notice |
+
+    Unknown terms are taxed at the STCG rate as a worst case.
 - **HTML report:** one self-contained file. Each holding shows its company name, the brokers holding it with quantities, flags, trend and company-data coverage.
 - **Audit log:** append-only and hash-chained. Records every import, signal and decision.
 
@@ -80,6 +91,8 @@ Version 0.6.2.
 | INDmoney classification, ETF label, allocation limits | Built |
 | Market regime from Kite index and VIX data | Built |
 | Risk flags, timing, tax view, report, audit log | Built |
+| Trade history imports | Built: Kite tradebook (CSV/XLSX); 5paisa Trade Listing and EQUITY Transaction statement; INDmoney consolidated tax report. Splits, off-market transfers and demergers are handled |
+| INDmoney full trade history | Not available yet. The tax report covers sold shares only, so current INDmoney holdings keep estimated dates |
 | Company data from company websites (`/research`) | Built: research subagent, fact checks, automatic confirmation of clean documents |
 | Company scoring (fundamentals, governance, valuation) | Built. Active for each company once its data is confirmed |
 | Sector and events blocks | Planned |
@@ -111,11 +124,14 @@ python3 tools/security_guards.py       # order tools blocked, secrets ignored
    security add-generic-password -s india-stock-analyzer -a fivepaisa_encryption_key -w
    ```
 
-**Trade history**, once: download into `data/imports/` and run `/import`. `.xlsx` and `.csv` files are read directly.
-- **Kite:** Console → Reports → Tradebook → Equity. One file per financial year, back to your oldest holding.
+**Trade history**, once: download into `data/imports/` and run `/import`. `.xlsx` and `.csv` files are read directly, and re-importing a file never creates duplicates.
+- **Kite:** Console → Reports → Tradebook → Equity. One file per financial year (01-04 to 31-03), back to your oldest holding.
+  - After changing the dates, **click the arrow button** and check the table shows that year before exporting. Otherwise Console exports the current year again.
+  - Every year downloads with the same file name, so rename each one (for example `tradebook-FY2025-26.xlsx`).
 - **5paisa:**
   - the **Trade Listing** report (exact trades, with ISIN and trade numbers), back to your account opening
   - then the **EQUITY Transaction** statement, which adds splits, off-market transfers in and demerger shares
+  - 5paisa shortens company names. Names that can't be matched exactly are listed, and you confirm their symbols in `data/imports/name-map.csv` (`company_name,symbol`).
 - **INDmoney:** the **consolidated tax report** (.xlsx, one per financial year).
   - `/import` turns every realised Indian stock and ETF sale into a buy and a sell with exact dates.
   - Your name and PAN are never read.
@@ -168,7 +184,8 @@ python3 tools/isa.py tax                        # lots, terms, wait dates, exemp
 python3 tools/isa.py report
 python3 tools/isa.py fivepaisa status           # then: fivepaisa login, fivepaisa sync
 python3 tools/isa.py import-classification --file data/imports/mcp/indmoney-networth-holdings-raw-<date>.json
-python3 tools/isa.py import-trades --source kite --file data/imports/tradebook.csv
+python3 tools/isa.py import-trades --source kite --file data/imports/tradebook-FY2025-26.xlsx
+python3 tools/isa.py import-trades --source fivepaisa --file data/imports/Tradelisting_<...>.xlsx
 python3 tools/isa.py import-5paisa-statement --file data/imports/EQUITY_Transaction_<...>.xlsx
 python3 tools/isa.py import-indmoney-tax --file "data/imports/consolidated_tax_report_2026-27.xlsx"
 python3 tools/isa.py research-targets --top 20     # what /research will fetch next
@@ -208,7 +225,8 @@ CLAUDE.md                 workspace rules and investor profile (read by Claude)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)
 src/isa/
   brokers/                5paisa read-only client, macOS Keychain access
-  importers/              holdings, trades, prices, classification, securities, facts
+  importers/              holdings, trades (CSV/XLSX), 5paisa statement, INDmoney tax report,
+                          prices, classification, securities, facts
   engine/                 market regime, monitor flags, technicals, fundamentals, governance, valuation, scoring
   tax/  portfolio/        FIFO lots and STCG/LTCG; allocation, limits, reconciliation
   report/  audit/         HTML report; hash-chained audit log
