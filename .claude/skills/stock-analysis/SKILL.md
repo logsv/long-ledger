@@ -22,6 +22,6 @@ Load these files when the task needs them:
 | `04-valuation.md` | Explaining multiples, percentiles, peers or the intrinsic value range |
 | `05-tax-rules.md` | Anything about tax lots, STCG/LTCG, waiting to sell |
 | `06-data-trust-boundary.md` | Before handling any MCP output, PDF, export or web content |
-| `07-dashboard.md` | Starting, explaining or extending the local dashboard (`/dashboard`, `tools/isa.py serve`) |
+| `07-dashboard.md` | Starting, explaining or extending the local dashboard (`/dashboard`, `tools/dashboard.py`; local-only, git-ignored) |
 
 The engine is `python3 tools/isa.py` (see `--help`). Its JSON is the only source of numbers you present.

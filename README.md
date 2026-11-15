@@ -161,10 +161,12 @@ Run `/sync` on every trading day you trade. The APIs only return that day's trad
 
 ## Local dashboard
 
+**Local only:** the dashboard code (`src/isa/web/`, `tools/dashboard.py`, `tests/test_web.py`) is git-ignored and exists only on this machine. This README and the `/dashboard` command and skill describe it; a fresh clone doesn't include the code.
+
 Start it from Claude Code with **`/dashboard`** (also `/dashboard status`, `/dashboard stop`), or yourself:
 
 ```bash
-python3 tools/isa.py serve        # opens http://127.0.0.1:8770 (add --no-browser, --port N)
+python3 tools/dashboard.py        # opens http://127.0.0.1:8770 (add --no-browser, --port N)
 ```
 
 A live view of the database in your browser:

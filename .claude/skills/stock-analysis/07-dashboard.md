@@ -2,7 +2,13 @@
 
 **What it is:** a standard-library HTTP server with a static page that uses Tabulator 6.3.1 (MIT), stored locally. There's no Node.js at run time and no CDN.
 
-**How to run it:** use `/dashboard`, or `python3 tools/isa.py serve [--port N] [--no-browser]`. The URL is http://127.0.0.1:8770.
+**Local only, not in git:** `src/isa/web/`, `tools/dashboard.py` and `tests/test_web.py` are git-ignored and exist only on this machine.
+- `tools/security_guards.py` still scans `src/isa/web` for order-endpoint names whenever the folder is present.
+- To rebuild on a new machine, follow this file. Tabulator comes from bun (see "Updating Tabulator").
+- The server registers its own `ui_action` audit event type at import.
+- The launcher is `tools/dashboard.py` (argparse `--port` and `--no-browser`; it calls `isa.web.server.serve`).
+
+**How to run it:** use `/dashboard`, or `python3 tools/dashboard.py [--port N] [--no-browser]`. The URL is http://127.0.0.1:8770.
 
 ## Files
 

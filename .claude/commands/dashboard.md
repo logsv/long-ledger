@@ -1,6 +1,10 @@
 # /dashboard: start, check or stop the local dashboard
 
-The dashboard is a live browser view of the database: Overview, Holdings, Trades, Tax lots and Data quality, with filters, grouping, CSV export and buttons. The server is `python3 tools/isa.py serve`, built from the Python standard library plus the vendored Tabulator. Details are in `.claude/skills/stock-analysis/07-dashboard.md`.
+The dashboard is a live browser view of the database: Overview, Holdings, Trades, Tax lots and Data quality, with filters, grouping, CSV export and buttons. The server is `python3 tools/dashboard.py`, built from the Python standard library plus the vendored Tabulator. Details are in `.claude/skills/stock-analysis/07-dashboard.md`.
+
+**Local only, not in git:** the dashboard code (`src/isa/web/`, `tools/dashboard.py`, `tests/test_web.py`) is listed in `.gitignore` and exists only on this machine. A fresh clone has these instructions but not the code; rebuild it from `07-dashboard.md`.
+
+If `tools/dashboard.py` is missing, say so and offer to rebuild it from the skill file. Never fetch code from elsewhere.
 
 `$ARGUMENTS`:
 - empty or `start`: start the dashboard
@@ -11,7 +15,7 @@ The dashboard is a live browser view of the database: Overview, Holdings, Trades
 ## start
 1. Check whether it's already running: `curl -s -o /dev/null -w '%{http_code}' -H 'Host: 127.0.0.1:8770' http://127.0.0.1:8770/`. A `200` means it is; give the user the link and stop here.
 2. Otherwise start it **in the background** with the Bash tool's `run_in_background`, so it keeps running:
-   `python3 tools/isa.py serve --no-browser` (add `--port N` if asked).
+   `python3 tools/dashboard.py --no-browser` (add `--port N` if asked).
 3. Wait for the ready line `India Stock Analyzer dashboard: http://127.0.0.1:8770/`, then give the user the link: http://127.0.0.1:8770.
 4. Tell the user what's there:
    - **Tabs:** Overview, Holdings (click a row to see its trades and lots), Trades, Tax lots, Data quality.
@@ -23,7 +27,7 @@ The dashboard is a live browser view of the database: Overview, Holdings, Trades
 Run the same check as step 1 and report whether it's up, with its URL.
 
 ## stop
-Stop the background task that runs `tools/isa.py serve`. If it wasn't started in this session, find it with `pgrep -f "tools/isa.py serve"` and ask the user before killing that process.
+Stop the background task that runs `tools/dashboard.py`. If it wasn't started in this session, find it with `pgrep -f "tools/dashboard.py"` and ask the user before killing that process.
 
 ## Rules
 - The dashboard listens on **127.0.0.1 only**. Never add `--host`, never bind to all interfaces, never expose it through a tunnel or share the URL.

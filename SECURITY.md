@@ -34,7 +34,7 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
 
 ## Local dashboard
 
-`python3 tools/isa.py serve` starts an HTTP server for your own browser:
+`python3 tools/dashboard.py` starts an HTTP server for your own browser. The code is local-only and git-ignored.
 - **Listens on 127.0.0.1 only.** Requests with any Host other than `127.0.0.1:<port>` or `localhost:<port>` are refused. This blocks DNS-rebinding pages.
 - **Data views open the database read-only.**
 - **Buttons need a token** generated at startup and embedded in the page, plus a same-origin request. Other websites can't trigger them.

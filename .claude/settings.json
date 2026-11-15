@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(python3 tools/isa.py:*)",
+      "Bash(python3 tools/dashboard.py:*)",
       "Bash(python3 tools/security_guards.py)",
       "Bash(python3 -m unittest:*)",
       "mcp__kite__login",

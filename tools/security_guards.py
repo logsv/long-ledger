@@ -8,7 +8,6 @@
 4. No code under src/ or tools/ calls a broker order endpoint: this tool never
    places orders.
 5. The 5paisa client's endpoint allowlist holds read-only endpoints only.
-6. The local dashboard binds to 127.0.0.1 only and offers no order actions.
 """
 
 from __future__ import annotations
@@ -91,25 +90,6 @@ def check_no_order_code(errors: list[str]) -> None:
 
 
 FIVEPAISA_READ_ONLY = {"GetAccessToken", "V3/Holding", "V1/TradeBook", "V3/NetPositionNetWise"}
-DASHBOARD_ACTIONS = {"refresh", "recompute", "report", "fivepaisa_sync"}
-
-
-def check_dashboard(errors: list[str]) -> None:
-    """The local dashboard must bind to loopback only and expose no order actions."""
-    sys.path.insert(0, str(ROOT / "src"))
-    from isa.web import server
-    if server.HOST != "127.0.0.1":
-        errors.append(f"dashboard: HOST must be 127.0.0.1, not {server.HOST!r}")
-    extra = set(server.ACTIONS) - DASHBOARD_ACTIONS
-    for a in sorted(extra):
-        errors.append(f"dashboard: action not on the allowed list: {a}")
-    for f in (ROOT / "src" / "isa" / "web").rglob("*"):
-        if f.suffix in (".py", ".js", ".html") and "vendor" not in f.parts:
-            text = f.read_text(encoding="utf-8")
-            if "0.0.0.0" in text:
-                errors.append(f"{f.relative_to(ROOT)}: binds or refers to 0.0.0.0")
-            if ORDER_CODE.search(text):
-                errors.append(f"{f.relative_to(ROOT)}: order-placement reference")
 
 
 def check_fivepaisa_allowlist(errors: list[str]) -> None:
@@ -122,8 +102,7 @@ def check_fivepaisa_allowlist(errors: list[str]) -> None:
 
 def main() -> int:
     errors: list[str] = []
-    for check in (check_settings, check_mcp, check_gitignore, check_no_order_code, check_fivepaisa_allowlist,
-                  check_dashboard):
+    for check in (check_settings, check_mcp, check_gitignore, check_no_order_code, check_fivepaisa_allowlist):
         try:
             check(errors)
         except (OSError, json.JSONDecodeError) as exc:

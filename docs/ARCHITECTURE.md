@@ -71,7 +71,7 @@ flowchart LR
 | `audit/` | Append-only, SHA-256 hash-chained events; database triggers block UPDATE and DELETE |
 | `brokers/fivepaisa.py` | 5paisa Xstream client, **read-only**. Endpoint allowlist: GetAccessToken, V3/Holding, V1/TradeBook, V3/NetPositionNetWise, plus V2/historical daily cash-segment candles. Browser login with a one-shot 127.0.0.1 callback that checks `state` |
 | `brokers/keychain.py` | macOS Keychain access through `/usr/bin/security`, for the encryption key and the daily access token |
-| `web/server.py` | Local dashboard server (standard library). Listens on 127.0.0.1 only and checks the Host header. Data views read the database read-only and are cached until **Refresh**. POST actions (refresh, recompute, report, 5paisa sync) need the per-run token and the same Origin, and are audited as `ui_action` |
+| `web/server.py` | (Local-only, git-ignored.) Local dashboard server (standard library). Listens on 127.0.0.1 only and checks the Host header. Data views read the database read-only and are cached until **Refresh**. POST actions (refresh, recompute, report, 5paisa sync) need the per-run token and the same Origin, and are audited as `ui_action` |
 | `web/api.py` | JSON views for the dashboard: overview, holdings, trades, lots, quality |
 | `web/static/` | `index.html`, `app.js`, `app.css`, and the vendored Tabulator 6.3.1 (MIT, with checksums in `vendor/tabulator/VERSION`) |
 | `service.py` / `cli.py` | Orchestration and the JSON CLI |

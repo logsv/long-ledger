@@ -438,9 +438,6 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-browser", action="store_true", help="print the login URL instead of opening it")
     s.add_argument("--timeout", type=int, default=300, help="seconds to wait for the login redirect")
     s.add_argument("--no-prices", action="store_true", help="skip daily price download")
-    s = sub.add_parser("serve", help="local dashboard on http://127.0.0.1:8770 (filters, buttons)")
-    s.add_argument("--port", type=int, default=8770)
-    s.add_argument("--no-browser", action="store_true", help="don't open the browser")
     s = sub.add_parser("audit")
     s.add_argument("action", choices=("tail", "verify"))
     s.add_argument("-n", type=int, default=20)
@@ -462,10 +459,6 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     _validate(args, p)
     load_dotenv()
-    if args.cmd == "serve":
-        from .web.server import serve
-        serve(args.port, open_browser=not args.no_browser)
-        return 0
     cfg = Config.load()
     conn = connect(db_path())
     try:
