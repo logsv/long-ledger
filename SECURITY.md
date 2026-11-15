@@ -41,6 +41,12 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
 - Extracted numbers carry their source URL and page.
 - Documents are confirmed automatically only when every consistency check passes; turn this off with `auto_confirm_checked = false`.
 
+## Broker statements
+
+- Tax reports and statements can contain your PAN and foreign-account details. Importers read only the trade rows they need.
+- The INDmoney tax report importer ignores its header (name, PAN) and the foreign-asset sheets.
+- Statement files stay in git-ignored `data/imports/`.
+
 ## Personal data
 
 - `data/` (database, imports, reports) is git-ignored and stays on your Mac.

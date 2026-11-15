@@ -89,6 +89,16 @@ def cmd_import_classification(conn, cfg, args):
     return res
 
 
+def cmd_import_indmoney_tax(conn, cfg, args):
+    from .importers import indmoney_tax
+    p = Path(args.file).expanduser()
+    res = indmoney_tax.import_tax_report(conn, p, file_name=p.name)
+    audit.append(conn, "import", {"kind": "indmoney_tax_report", "file": p.name, "sales": res["sales_found"],
+                                  "stored": res["stored"], "unknown_isins": len(res["unknown_isins"])})
+    conn.commit()
+    return res
+
+
 def cmd_market(conn, cfg, args):
     run = service.run(conn, cfg, _as_of(args), record=False)
     return run["market"]
@@ -357,6 +367,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("import-classification", help="INDmoney net-worth/holdings reply: asset class, market cap, ETF")
     s.add_argument("--file")
     s.add_argument("--map", help="JSON/CSV of ind_key -> symbol (or isin) from INDmoney's lookup tool")
+    s = sub.add_parser("import-indmoney-tax", help="INDmoney consolidated tax report .xlsx: realised stock/ETF sales")
+    s.add_argument("--file", required=True)
     s = sub.add_parser("market", help="market regime: index trend, India VIX, breadth, sector rotation")
     s.add_argument("--as-of")
     s = sub.add_parser("pending-facts", help="LLM-extracted facts awaiting confirmation")

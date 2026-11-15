@@ -36,6 +36,12 @@ Each import is a snapshot for `as_of` (default: today) per source. Portfolio qua
 - Without a trade id, a stable id is derived, so re-importing the same file creates no duplicates.
 - Lots are matched FIFO **per account**, which defaults to the source.
 
+## INDmoney tax report: `import-indmoney-tax --file consolidated_tax_report_<FY>.xlsx`
+
+- Reads the **Indian Stocks** and **Equity/Non-Equity ETFs** sections of the LTCG and STCG sheets. Each row (name, ISIN, redemption date, purchase date, units, per-unit sell and buy) becomes a BUY and a SELL for the `indmoney` account. The trade ids start `indtax|`, so re-imports are de-duplicated.
+- Mutual funds, US stocks, dividends and the Schedule FA, FSI and TR sheets are ignored. So is the header with your name and PAN.
+- These trades cover only sold shares, so they never set the account's history start date. Current holdings stay as estimated opening lots.
+
 ## Prices: `import-prices --symbol SYM --source NAME [--index]`
 
 Columns: `date, open, high, low, close, volume`. Kite's raw candle arrays `[date, o, h, l, c, v]` also work.

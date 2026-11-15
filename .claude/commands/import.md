@@ -23,7 +23,11 @@ Look at the name, header row or first page, then route it:
 
 **Spreadsheets:** `.xlsx` files are read directly; there's no need to convert them. Title rows above the header and footer lines are skipped.
 - **5paisa:** use the **Trade Listing** report (it has ISIN and trade numbers). Not the "EQUITY Transaction" report, which has neither, so it can't be matched or de-duplicated.
-- **INDmoney:** its tax report lists only realised trades and contains your PAN. Don't import it.
+- **INDmoney consolidated tax report** (`consolidated_tax_report_<FY>.xlsx`): run `python3 tools/isa.py import-indmoney-tax --file <f>`.
+  - Each realised Indian stock or ETF sale becomes a buy and a sell with exact dates and prices.
+  - Only the Indian Stocks and ETF sections are read. The client name and PAN header, mutual funds, US stocks and foreign-asset sheets are ignored.
+  - It covers only shares already sold, so INDmoney's current holdings keep estimated dates until a trade-history export is imported.
+  - Never quote the PAN or other personal details from this file.
 
 **Unknown ISINs:** if an import returns `unknown_isins`, those stocks aren't in the database yet. They are usually shares you've sold.
 1. Look each ISIN up with `mcp__kite__search_instruments` (`filter_on: "isin"`).

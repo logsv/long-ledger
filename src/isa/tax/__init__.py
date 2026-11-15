@@ -77,7 +77,10 @@ def _opening_balances(conn: sqlite3.Connection, symbol: str | None) -> list[Lot]
         "SELECT h.source, h.symbol, h.quantity, h.avg_price, h.as_of FROM holding_snapshot h JOIN"
         " (SELECT source, MAX(as_of) a FROM holding_snapshot GROUP BY source) m"
         " ON h.source = m.source AND h.as_of = m.a").fetchall()
-    starts = {r[0]: r[1] for r in conn.execute("SELECT account, MIN(trade_date) FROM trade GROUP BY account")}
+    # Trades rebuilt from a tax report cover only shares that were sold, so they say
+    # nothing about when the remaining shares were bought: they don't set a start date.
+    starts = {r[0]: r[1] for r in conn.execute(
+        "SELECT account, MIN(trade_date) FROM trade WHERE trade_id NOT LIKE 'indtax|%' GROUP BY account")}
     net = {(r[0], r[1]): r[2] for r in conn.execute(
         "SELECT account, symbol, SUM(CASE side WHEN 'BUY' THEN quantity ELSE -quantity END)"
         " FROM trade GROUP BY account, symbol")}
@@ -128,12 +131,20 @@ def build_lots(conn: sqlite3.Connection, tax_cfg: dict, symbol: str | None = Non
         key = (r["account"], r["symbol"])
         queue = queues.setdefault(key, [])
         if r["side"] == "BUY":
-            queue.append(Lot(r["account"], r["symbol"], r["trade_date"], r["quantity"], r["price"]))
+            new = Lot(r["account"], r["symbol"], r["trade_date"], r["quantity"], r["price"])
+            # keep the queue in buy-date order (an opening lot may be dated after some trades)
+            pos = len(queue)
+            while pos > 0 and queue[pos - 1].buy_date > new.buy_date:
+                pos -= 1
+            queue.insert(pos, new)
             continue
         remaining = r["quantity"]
         sell_date = date.fromisoformat(r["trade_date"])
-        while remaining > 1e-9 and queue:
-            lot = queue[0]
+        i = 0
+        while remaining > 1e-9 and i < len(queue):
+            lot = queue[i]
+            if lot.buy_date > r["trade_date"]:  # can't sell shares bought later
+                break
             take = min(lot.quantity, remaining)
             term = _term(lot, sell_date, months)
             book.realised.append(Realised(
@@ -142,7 +153,9 @@ def build_lots(conn: sqlite3.Connection, tax_cfg: dict, symbol: str | None = Non
             lot.quantity -= take
             remaining -= take
             if lot.quantity <= 1e-9:
-                queue.pop(0)
+                queue.pop(i)
+            else:
+                i += 1
         if remaining > 1e-9:
             book.errors.append({"account": r["account"], "symbol": r["symbol"],
                                 "sell_date": r["trade_date"], "unmatched_quantity": remaining,

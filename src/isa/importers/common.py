@@ -121,8 +121,16 @@ _HEADER_WORDS = re.compile(r"(date|symbol|scrip|qty|quantity|isin|price|rate|tra
 _XNS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 
 
-def _xlsx_rows(path) -> list[list[str]]:
-    """Rows of the first worksheet of an .xlsx file, as strings (no third-party libs)."""
+def xlsx_sheet_names(path) -> list[str]:
+    import zipfile
+    from xml.etree import ElementTree as ET
+    with zipfile.ZipFile(path) as z:
+        wb = ET.fromstring(z.read("xl/workbook.xml"))
+        return [s.get("name") for s in wb.iter(f"{_XNS}sheet")]
+
+
+def _xlsx_rows(path, sheet: str | None = None) -> list[list[str]]:
+    """Rows of one worksheet (default: the first) of an .xlsx file, as strings (no third-party libs)."""
     import zipfile
     from xml.etree import ElementTree as ET
     with zipfile.ZipFile(path) as z:
@@ -130,11 +138,19 @@ def _xlsx_rows(path) -> list[list[str]]:
         if "xl/sharedStrings.xml" in z.namelist():
             for si in ET.fromstring(z.read("xl/sharedStrings.xml")).iter(f"{_XNS}si"):
                 shared.append("".join(t.text or "" for t in si.iter(f"{_XNS}t")))
-        sheets = sorted(n for n in z.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n))
+        sheets = sorted((n for n in z.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)),
+                        key=lambda n: int(re.search(r"(\d+)\.xml$", n).group(1)))
         if not sheets:
             raise ImportError_("no worksheet in the .xlsx file")
+        target = sheets[0]
+        if sheet is not None:
+            names = xlsx_sheet_names(path)
+            if sheet not in names:
+                raise ImportError_(f"sheet {sheet!r} not found")
+            # sheetN.xml follows workbook order in files written by common tools
+            target = sheets[names.index(sheet)]
         rows: list[list[str]] = []
-        for r in ET.fromstring(z.read(sheets[0])).iter(f"{_XNS}row"):
+        for r in ET.fromstring(z.read(target)).iter(f"{_XNS}row"):
             vals: dict[int, str] = {}
             for c in r.iter(f"{_XNS}c"):
                 ref = c.get("r") or ""

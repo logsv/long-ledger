@@ -2,6 +2,19 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] - 2026-11-15
+
+### Added
+- **`import-indmoney-tax`:** INDmoney consolidated tax reports.
+  - Every realised Indian stock and ETF sale becomes a BUY + SELL pair with exact dates and prices.
+  - The FY 2026-27 totals match the report summary exactly (sell ₹1,09,366, buy ₹75,188).
+  - The name, PAN and non-equity sheets are ignored.
+- **`.xlsx` reader** can pick a sheet by name.
+
+### Fixed
+- **FIFO only matches a sale to lots bought on or before the sale date.** Before this, an estimated opening lot dated after a sale could absorb it.
+- **Tax-report trades no longer set an account's history start date,** because they cover sold shares only.
+
 ## [0.5.0] - 2026-11-15
 
 ### Added

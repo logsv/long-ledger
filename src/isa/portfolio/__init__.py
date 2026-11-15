@@ -147,26 +147,32 @@ def reconcile(conn: sqlite3.Connection, book: LotBook) -> list[dict]:
         lot_qty[(lot.account, lot.symbol)] += lot.quantity
     snap_qty = {(r["source"], r["symbol"]): r["quantity"] for r in latest_snapshots(conn)}
     synced_sources = {k[0] for k in snap_qty}
-    traded_accounts = {r[0] for r in conn.execute("SELECT DISTINCT account FROM trade")}
+    traded_accounts = {r[0] for r in conn.execute(
+        "SELECT DISTINCT account FROM trade WHERE trade_id NOT LIKE 'indtax|%'")}
+    taxreport_accounts = {r[0] for r in conn.execute(
+        "SELECT DISTINCT account FROM trade WHERE trade_id LIKE 'indtax|%'")}
     issues = []
     for key in sorted(set(snap_qty) | set(lot_qty)):
         account, sym = key
-        if account not in synced_sources or account not in traded_accounts:
+        if account not in synced_sources or account not in (traded_accounts | taxreport_accounts):
             continue  # nothing to compare against for this broker yet
         s, l_ = snap_qty.get(key, 0.0), lot_qty.get(key, 0.0)
         if abs(s - l_) > 1e-6:
             issues.append({"account": account, "symbol": sym, "broker_quantity": s,
                            "lot_quantity": l_,
                            "hint": "import missing trades (older tradebook) or a corporate action"})
-    starts = {r[0]: r[1] for r in conn.execute("SELECT account, MIN(trade_date) FROM trade GROUP BY account")}
+    starts = {r[0]: r[1] for r in conn.execute(
+        "SELECT account, MIN(trade_date) FROM trade WHERE trade_id NOT LIKE 'indtax|%' GROUP BY account")}
     est: dict[str, int] = defaultdict(int)
     for lot in book.open_lots:
         if lot.estimated:
             est[lot.account] += 1
     for account in sorted(synced_sources):
         if account not in traded_accounts:
+            extra = (" (its tax report covers only shares already sold)" if account in taxreport_accounts else "")
             issues.append({"account": account, "symbol": None, "broker_quantity": None, "lot_quantity": None,
-                           "hint": "no trades imported: buy dates unknown for all its holdings (import its tradebook)"})
+                           "hint": "no trade history: buy dates unknown for its current holdings" + extra
+                                   + " (import its tradebook)"})
         elif est.get(account):
             issues.append({"account": account, "symbol": None, "broker_quantity": None, "lot_quantity": None,
                            "hint": f"{est[account]} holdings include shares bought before {starts[account]}, the earliest "

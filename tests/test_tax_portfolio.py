@@ -113,3 +113,47 @@ class PortfolioTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IndmoneyTaxReportTest(unittest.TestCase):
+    def _xlsx(self, path, rows):
+        """Write a minimal .xlsx with LTCG (empty) and STCG sheets using inline strings."""
+        import zipfile
+        from xml.sax.saxutils import escape
+
+        def sheet(rs):
+            body = "".join("<row>" + "".join(f'<c t="inlineStr"><is><t>{escape(str(v))}</t></is></c>' for v in r)
+                           + "</row>" for r in rs)
+            return ('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                    f"<sheetData>{body}</sheetData></worksheet>")
+        wb = ('<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets>'
+              '<sheet name="LTCG" sheetId="1"/><sheet name="STCG" sheetId="2"/></sheets></workbook>')
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr("xl/workbook.xml", wb)
+            z.writestr("xl/worksheets/sheet1.xml", sheet([["Client PAN:", "ABCDE1234F"]]))
+            z.writestr("xl/worksheets/sheet2.xml", sheet(rows))
+
+    def test_sales_become_buy_sell_pairs_and_dont_date_remaining_shares(self):
+        import tempfile
+        from isa.importers.indmoney_tax import import_tax_report
+        hdr = ["Name of Stock", "ISIN", "Redemption date", "Purchase date", "Holding Period", "Units sold",
+               "Per unit", "", "Total", "", "Gross Gains/Losses"]
+        rows = [["Client PAN:", "ABCDE1234F"], ["STCG - Equity"], ["Indian Stocks"], hdr,
+                ["", "", "", "", "", "", "Sell Value", "Purchase Value"], ["Gains"],
+                ["ACME LTD", "INE000A01011", "2026-08-14", "2026-01-22", "<= 12 Months", "3", "120", "100",
+                 "360", "300", "60"],
+                ["Equity Mutual Funds"], ["Some Fund", "INF000A01011", "x"]]
+        conn = db()
+        import_securities(conn, [{"symbol": "ACME", "isin": "INE000A01011", "name": "Acme Ltd"}])
+        import_holdings(conn, [{"symbol": "ACME", "quantity": 5, "average_price": 110}], "indmoney", as_of="2026-11-14")
+        with tempfile.TemporaryDirectory() as d:
+            self._xlsx(d + "/r.xlsx", rows)
+            res = import_tax_report(conn, d + "/r.xlsx")
+        self.assertEqual((res["sales_found"], res["stored"]), (1, 2))
+        book = build_lots(conn, cfg().tax)
+        self.assertEqual([(r.quantity, r.cost, r.term) for r in book.realised], [(3, 100, "STCG")])
+        opening = [l for l in book.open_lots if l.estimated][0]
+        self.assertEqual(opening.quantity, 5)            # the 5 still held are not dated by the report
+        self.assertEqual(opening.acquired_before, "2026-11-14")
+        pan = conn.execute("SELECT COUNT(*) FROM trade WHERE trade_id LIKE '%ABCDE1234F%'").fetchone()[0]
+        self.assertEqual(pan, 0)
