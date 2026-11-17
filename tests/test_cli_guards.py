@@ -77,6 +77,18 @@ class GuardTest(unittest.TestCase):
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def _order_guard(self, payload: str) -> int:
+        return subprocess.run([sys.executable, str(ROOT / "tools" / "kite_order_guard.py")],
+                              input=payload, capture_output=True, text=True).returncode
+
+    def test_kite_order_guard_allows_read_modes_only(self):
+        for mode in ("list", "history", "trades", "all_trades"):
+            self.assertEqual(self._order_guard(json.dumps({"tool_input": {"mode": mode}})), 0, mode)
+        for mode in ("place", "modify", "cancel", "approval_status", "permissions", "", None):
+            self.assertEqual(self._order_guard(json.dumps({"tool_input": {"mode": mode}})), 2, mode)
+        for payload in ("", "not json", "{}", "[]"):
+            self.assertEqual(self._order_guard(payload), 2, payload)
+
 
 if __name__ == "__main__":
     unittest.main()

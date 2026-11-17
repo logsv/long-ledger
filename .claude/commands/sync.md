@@ -1,32 +1,33 @@
 # /sync: pull broker records through MCP (read tools only)
 
-Bring holdings, today's trades, daily prices, index and India VIX history, and INDmoney's asset-class and market-cap tags into the database. Only Kite, INDmoney and 5paisa are used as data sources. **Never call an order, GTT or alert tool.** They are denied, and you must not try them.
+Bring holdings, today's trades, daily prices, index and India VIX history, and INDmoney's asset-class and market-cap tags into the database. Only Kite, INDmoney and 5paisa are used as data sources. **Never place, modify or cancel anything, and never call a GTT or alert tool.** Kite's `orders` tool is used for one thing only: reading today's trades with `mode: "all_trades"`. Never call it with any other mode.
 
 `$ARGUMENTS` may name one broker (`kite` or `indmoney`). The default is both.
 
 ## Step 0: Check the connections
 If a server is not connected or a tool returns a session error:
-- **Kite:** call `mcp__kite__login` and show the user the link it returns, including the warning text the tool asks you to show. The user signs in on Kite's page.
+- **Kite:** check with `mcp__kite__session` (`mode: "status"`). If it is not signed in, ask the user to run `/mcp` and sign in. The sign-in happens on Kite's own page.
 - **INDmoney:** ask the user to run `/mcp` and sign in. The sign-in happens on INDmoney's own page.
 
 Never ask for credentials in chat.
 
 ## Step 1: Kite
-1. `mcp__kite__get_holdings`: save the result **exactly as returned** to `data/imports/mcp/kite-holdings-<YYYY-MM-DD>.json` with the Write tool.
+1. `mcp__kite__portfolio` with `mode: "holdings"`, `type: "full"`, `limit: 500` (the `compact` type lacks ISIN and average price): save the result **exactly as returned** to `data/imports/mcp/kite-holdings-<YYYY-MM-DD>.json` with the Write tool.
    Then run `python3 tools/isa.py import-holdings --source kite --file data/imports/mcp/kite-holdings-<date>.json`.
-2. `mcp__kite__get_trades`: save the result to `data/imports/mcp/kite-trades-<date>.json`. Run `python3 tools/isa.py import-trades --source kite --file <that file>`.
+2. `mcp__kite__orders` with `mode: "all_trades"`, `limit: 500`, and no other mode: save the result to `data/imports/mcp/kite-trades-<date>.json`. Run `python3 tools/isa.py import-trades --source kite --file <that file>`.
    Kite returns **today's trades only**. For older trades the user must import the Console tradebook CSV with `/import`.
 3. Prices: get the holdings list and the watchlist (`python3 tools/isa.py watch list`). For each symbol:
-   - Find its instrument token with `mcp__kite__search_instruments` (NSE, equity).
-   - Call `mcp__kite__get_historical_data` with interval `day`, from the last stored date (or 2 years back on the first sync) to today.
+   - Skip symbols whose last stored date is already today (5paisa may have filled them).
+   - Find its NSE instrument token. Holdings rows on NSE already carry it. For the rest, one `mcp__kite__market` call with `mode: "ltp"` and `instruments: ["NSE:<SYMBOL>", ...]` returns the token for every symbol. Anything under `missing_instruments` (for example a stock in the BE series) needs `mode: "search"`.
+   - Call `mcp__kite__market` with `mode: "historical"`, interval `day`, from the last stored date (or 2 years back on the first sync) to today.
    - Save the result to `data/imports/mcp/kite-prices-<SYMBOL>-<date>.json` and run `python3 tools/isa.py import-prices --symbol <SYMBOL> --source kite --file <that file>`.
 4. **Indices and India VIX** (for the market regime). Do this for every name in `[market]` of `config/thresholds.toml`: `broad_index`, `large_cap_index`, `volatility_index` and each of `sector_indices`.
-   - Find the token with `mcp__kite__search_instruments` (`filter_on: "name"` or `tradingsymbol`, exchange NSE, segment INDICES).
+   - Find the tokens with one `mcp__kite__market` call, `mode: "ltp"` and `instruments: ["NSE:<NAME>", ...]`. For a name it reports missing, use `mode: "search"` (`filter_on: "name"` or `tradingsymbol`, exchange NSE).
    - Fetch `day` candles from the last stored date, or 2 years back on the first run.
    - Save the result to `data/imports/mcp/kite-index-<NAME>-<date>.json` and run `python3 tools/isa.py import-prices --index --symbol "<NAME exactly as in config>" --source kite --file <that file>`.
    - If an index can't be found, skip it and say so.
 5. **Names and ISINs for matching.** For held symbols with no name in the database:
-   - Look each one up with `mcp__kite__search_instruments` (`filter_on: "tradingsymbol"`).
+   - Look each one up with `mcp__kite__market`, `mode: "search"` (`filter_on: "tradingsymbol"`).
    - Write a CSV `symbol,isin,name` with the values **exactly as returned** to `data/imports/mcp/kite-names-<date>.csv`.
    - Run `python3 tools/isa.py import-securities --file <that file>`.
 
