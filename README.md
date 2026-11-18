@@ -19,14 +19,18 @@ Data comes from your three brokers (read-only) and from listed companies' own we
 | **Company websites, then other public sources** | `/research`: the company's own investor pages and press releases first; if those lack data or block access, press-release wires, business news, credit-rating rationales and web search; model knowledge last, clearly marked | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector, recent news |
 
 The brokers do **not** provide company financials, valuation, shareholding, pledge data or sectors. Those come from **`/research`**:
-- A read-only subagent finds each company's official website and reads its annual reports, results and shareholding filings.
-- Every number is stored with its source URL and page.
+- A read-only subagent finds each company's official website and reads its annual reports, results, shareholding filings and press releases.
+- If the site lacks data or blocks access, it falls back to press-release wires, business news, credit-rating rationales and web search, and finally its own knowledge.
+- Every number is stored with its source URL and page, and an **origin**: `official`, `third_party` or `model`.
 - `check-facts` tests each document for unit errors (lakh vs crore), EPS ≠ PAT ÷ shares, EBIT above EBITDA, impossible percentages and revenue jumps.
-- Documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to confirm them yourself. Documents with issues stay pending.
+- Official documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to confirm them yourself. Documents with issues stay pending.
+- Third-party and model numbers are **never** confirmed automatically: you confirm them one by one, after comparing them with any official figure.
+- Up to 8 recent news items per company are kept as context, never as numbers.
+- Each run is logged as ok, partial or failed, so `/research incomplete` can retry what didn't work.
 
 Until a company has confirmed data it is in **monitoring mode**: market conditions, allocation, risk flags and tax timing, with no BUY/SELL label.
 
-Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com, trendlyne.com, moneycontrol.com or tickertape.in. Their terms forbid automated collection, or they are second-hand aggregators. These domains are denied in `.claude/settings.json`, and the safety guard checks it.
+Research never fetches nseindia.com, bseindia.com, screener.in, tijorifinance.com, trendlyne.com, moneycontrol.com or tickertape.in. Their terms forbid automated collection, or they are second-hand aggregators. These domains are denied in `.claude/settings.json`, and the safety guard checks it.
 
 ## What you get
 
@@ -82,7 +86,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 
 ## Status
 
-Version 0.7.1.
+Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research buckets and source tiers, schema v5).
 
 | Area | Status |
 |---|---|
@@ -143,9 +147,10 @@ python3 tools/security_guards.py       # order tools blocked, secrets ignored
 Shares bought before your earliest imported trade become **estimated opening lots**: quantities reconcile, but their buy date shows as "before <date>". Import older tradebooks to replace them with exact lots. After that, `/sync` adds new trades each day.
 
 **Company data**, first run:
-1. Run `/research --top 5` and review the result: sources, confirmed documents, anything pending.
-2. Then run `/research --top 20`. The top 20 holdings cover most of the portfolio's value.
-3. Holdings beyond those can follow in later runs.
+1. Run `/research` with no arguments. It shows how many holdings are not researched yet, failed or partial, or due for an update, with the share of portfolio value each covers, and asks which group and how many.
+2. Start small, for example `/research new --top 5`, and review the result: sources tried, confirmed documents, anything pending.
+3. Then widen it: `/research new --top 20` covers most of the portfolio's value, and `/research new --range 21-40` takes the next ranks by weight.
+4. Run `/research incomplete` to retry failed or partial companies.
 
 ## Daily use
 
