@@ -219,7 +219,8 @@ Long-running projects lose context between sessions, so this one keeps its memor
 
 **What goes in, and what never does:**
 - **In:** decisions and reasons, architecture, commands, versions, commits, open items, lessons.
-- **Never:** holdings, quantities, values, trades, tax figures, account IDs, PAN, keys, or signals for specific stocks.
+- **Only after you approve that write:** holdings, quantities, values, trades, tax figures, and analysis or signals for specific stocks. Claude shows the exact text first. Keep such pages private.
+- **Never:** account IDs, client codes, PAN, personal details from statements, keys or tokens.
 
 The full table is in `.claude/commands/memory.md`. Claude checks every draft against it before writing.
 
@@ -236,7 +237,7 @@ The full table is in `.claude/commands/memory.md`. Claude checks every draft aga
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
 | `/research [--top N] [--refresh] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
-| `/memory [recall\|save\|note\|setup]` | Project memory in a Notion page: decisions, status, open items, lessons (never portfolio data) |
+| `/memory [recall\|save\|note\|setup]` | Project memory in a Notion page: decisions, status, open items, lessons (portfolio data only with your approval) |
 
 ## Core CLI
 
