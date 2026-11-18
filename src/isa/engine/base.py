@@ -160,15 +160,16 @@ class Data:
         return closes[i - 1] if i else None
 
     def last_price(self, symbol: str) -> tuple[float, str] | None:
+        """Latest price: the broker's own last price unless a daily close is newer."""
         dates, closes, _ = self._prices(symbol)
-        if dates:
-            return closes[-1], dates[-1]
         r = self.conn.execute(
             "SELECT last_price, as_of FROM holding_snapshot WHERE symbol = ? AND as_of <= ?"
             " AND last_price IS NOT NULL ORDER BY as_of DESC LIMIT 1",
             (symbol, self.as_of.isoformat()),
         ).fetchone()
-        return (r[0], r[1]) if r else None
+        if r and (not dates or r[1] >= dates[-1]):
+            return r[0], r[1]
+        return (closes[-1], dates[-1]) if dates else None
 
 
 def _neg(iso: str) -> str:

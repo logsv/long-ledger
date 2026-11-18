@@ -15,9 +15,9 @@
 | File | Role |
 |---|---|
 | `src/isa/web/server.py` | `Dashboard` (cached `service.run`, read-only database connections), `make_handler` (routes and security checks), `serve()`. The constants `HOST = "127.0.0.1"` and `ACTIONS` live here |
-| `src/isa/web/api.py` | JSON views: `overview`, `holdings`, `trades`, `lots`, `quality`. They return flat rows shaped for Tabulator |
+| `src/isa/web/api.py` | JSON views: `overview`, `holdings`, `trades`, `lots`, `quality`. They return flat rows shaped for Tabulator. Holdings rows carry the scorecard flattened as `m_<key>` (value), `t_<key>` (tone), `x_<key>` (text), plus `ret_yr` and the full `card` |
 | `src/isa/web/static/index.html` | Tabs, toolbars and buttons. `{{TOKEN}}` is replaced at serve time |
-| `src/isa/web/static/app.js` | Table definitions, toolbar filters, grouping, CSV download, row click-through, action calls |
+| `src/isa/web/static/app.js` | Table definitions, the Position / Business / Valuation column views (`VIEWS`), the scorecard panel (`renderScorecard`), toolbar filters, grouping, CSV download, action calls |
 | `src/isa/web/static/app.css` | Light and dark theme. Light uses `tabulator.min.css`, dark uses `tabulator_midnight.min.css` |
 | `src/isa/web/static/vendor/tabulator/` | `tabulator.min.js`, the CSS files, `LICENSE`, and `VERSION` with SHA-256 checksums |
 | `tests/test_web.py` | Server tests on a temporary database |

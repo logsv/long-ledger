@@ -9,7 +9,7 @@ from ..tax import LotBook
 
 
 def latest_prices(conn: sqlite3.Connection) -> dict[str, tuple[float, str]]:
-    """symbol -> (close, date) from daily prices; snapshot price as fallback."""
+    """symbol -> (price, date): the broker's last price, unless a daily close is newer."""
     out: dict[str, tuple[float, str]] = {}
     for r in conn.execute(
         "SELECT p.symbol, p.close, p.date FROM price_daily p JOIN"
@@ -22,7 +22,7 @@ def latest_prices(conn: sqlite3.Connection) -> dict[str, tuple[float, str]]:
         " (SELECT source, MAX(as_of) a FROM holding_snapshot GROUP BY source) m"
         " ON h.source = m.source AND h.as_of = m.a WHERE h.last_price IS NOT NULL"
     ):
-        if r["symbol"] not in out or out[r["symbol"]][1] < r["as_of"]:
+        if r["symbol"] not in out or out[r["symbol"]][1] <= r["as_of"]:
             out[r["symbol"]] = (r["last_price"], r["as_of"])
     return out
 

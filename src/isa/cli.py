@@ -250,6 +250,19 @@ def cmd_coverage(conn, cfg, args):
             "holdings": sorted(rows, key=lambda r: -(r["weight"] or 0))}
 
 
+def cmd_scorecard(conn, cfg, args):
+    """Long-investor scorecard per stock: 12 metrics in 4 groups, plus your return per year."""
+    syms = [normalize_symbol(x) for x in args.symbols] or None
+    run = service.run(conn, cfg, _as_of(args), symbols=syms, record=False)
+    cards = run["scorecards"]
+    if args.compact:
+        return {"as_of": run["as_of"], "stocks": [
+            {"symbol": s, "filled": c["filled"], "of": c["of"], "your_return": c["your_return"]["text"],
+             **{m["key"]: m["value"] for g in c["groups"] for m in g["metrics"]}}
+            for s, c in cards.items()]}
+    return {"as_of": run["as_of"], "scorecards": cards}
+
+
 def cmd_metrics(conn, cfg, args):
     return {k: {"unit": u, "description": d} for k, (u, d) in facts.METRICS.items()}
 
@@ -465,6 +478,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--note", help="why it failed or what is missing")
     s.add_argument("--list", action="store_true")
     s.add_argument("--limit", type=int, default=50)
+    s = sub.add_parser("scorecard", help="long-investor scorecard: valuation, quality, growth, safety, your return/yr")
+    s.add_argument("symbols", nargs="*")
+    s.add_argument("--compact", action="store_true", help="one flat row per stock")
+    s.add_argument("--as-of")
     s = sub.add_parser("coverage", help="company-data coverage per holding")
     sub.add_parser("metrics", help="list accepted fact metrics")
     s = sub.add_parser("security", help="set sector/industry/name for a stock")

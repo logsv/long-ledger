@@ -9,6 +9,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - `research-targets --summary`, `--only`, `--range`, `--older-than`, `--as-of`; each target carries `rank`, `buckets` and `reasons`.
 - `research-log` records each research outcome (ok, partial, failed) with a note, so failures can be retried. Schema v4 adds the `research_run` table.
 - `/research` sources in tiers: the company's own site (now including press releases) first; press-release wires, business news, credit-rating rationales and web search when the site lacks data or blocks access; model knowledge last. Each fact stores its `origin` (schema v5). Third-party and model facts are never auto-confirmed. The researcher also returns recent news and which sources it tried.
+- **Scorecard** per stock (`src/isa/scorecard.py`, `isa.py scorecard`): P/E with its own history, P/B, dividend yield, price vs fair value, ROCE, ROE, cash conversion, revenue and EPS growth, debt/equity, interest cover, promoter holding and pledge, plus your annualised return on open lots (total return under a year). Colours reuse the engine's bands. Shown in the HTML report, `/analyze` and the local dashboard (Position / Business / Valuation views and a scorecard panel).
+
+### Changed
+- Price: the broker's last price now wins over a daily close from the same day; a daily close is used only when newer. This applies to the engine too, so valuation uses the same price as the portfolio.
 
 ## [0.7.1] - 2026-11-15
 

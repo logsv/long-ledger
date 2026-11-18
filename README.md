@@ -76,8 +76,23 @@ Research never fetches nseindia.com, bseindia.com, screener.in, tijorifinance.co
     | `demerger` | Shares from a demerger; cost to be apportioned per the company's notice |
 
     Unknown terms are taxed at the STCG rate as a worst case.
-- **HTML report:** one self-contained file. Each holding shows its company name, the brokers holding it with quantities, flags, trend and company-data coverage.
+- **HTML report:** one self-contained file. Each holding shows its company name, the brokers holding it with quantities, flags, trend and company-data coverage, plus a Scorecard table for stocks with company data.
 - **Audit log:** append-only and hash-chained. Records every import, signal and decision.
+
+**Scorecard per stock.** Twelve numbers a long-term investor checks, in four questions, plus your own return:
+
+| Question | Metrics |
+|---|---|
+| Is it cheap? | P/E (with its own history), P/B, dividend yield, price vs fair-value range |
+| Is it a good business? | ROCE, ROE, cash conversion (operating cash flow ÷ profit) |
+| Is it growing? | Revenue and EPS growth per year over 5 years (3 if shorter) |
+| Is it safe? | Debt/equity, interest cover, promoter holding and pledge |
+| Your return | Annualised return on the shares you hold, from your buy dates and the broker's cost. Under a year it shows total return instead |
+
+- **Broker data first:** price is the broker's last price (a daily close only if newer) and cost is the broker's average. No broker feed supplies ratios, so they are calculated from confirmed company facts.
+- **Colours** use the same thresholds as the labels, so a green ROCE always agrees with the fundamentals score.
+- **Missing data** shows as "–" with what's needed (usually `/research`), never an estimate.
+- Shown in the dashboard (Business and Valuation views, and a scorecard panel on row click), in the HTML report (Scorecard section) and by `/analyze`; `python3 tools/isa.py scorecard [SYMBOLS] [--compact]` prints it as JSON.
 
 **For each company with confirmed data** (from `/research` or `/import`):
 - **Scoring** on fundamentals, governance (red flags block a BUY) and valuation: own history, peers, and an intrinsic-value range with its assumptions shown.
@@ -86,7 +101,7 @@ Research never fetches nseindia.com, bseindia.com, screener.in, tijorifinance.co
 
 ## Status
 
-Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research buckets and source tiers, schema v5).
+Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research buckets and source tiers, schema v5, scorecard).
 
 | Area | Status |
 |---|---|
@@ -116,7 +131,7 @@ Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 62 tests (69 with the local dashboard tests)
+python3 -m unittest discover -s tests  # 65 tests (72 with the local dashboard tests)
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -183,7 +198,7 @@ A live view of the database in your browser:
 | Tab | What it shows |
 |---|---|
 | **Overview** | Value, market regime, allocation, limits, broker sync dates, what needs attention, sector indices |
-| **Holdings** | Every stock with company name, brokers and quantities, value, weight, P&L, asset class, market cap, label, flags, trend and company-data state. Click a row to see its trades and lots |
+| **Holdings** | Three views: **Position** (brokers and quantities, value, weight, P&L, your return per year, label, flags, trend, company-data state), **Business** (ROCE, ROE, cash conversion, growth, debt, interest cover, promoter) and **Valuation** (price, market cap, P/E, P/B, dividend yield, vs fair value). Click a row for its scorecard, then "Trades & tax lots" |
 | **Trades** | All trades, with broker, side, source and date-range filters |
 | **Tax lots** | Lot type, buy date, term, wait date, estimated tax. There's a "turns long-term within 30 days" filter |
 | **Data quality** | Reconciliation, sells with no earlier buy, facts awaiting confirmation |
@@ -266,6 +281,7 @@ python3 tools/isa.py research-targets --only stale --range 1-20
 python3 tools/isa.py research-log --list          # recent research outcomes per stock
 python3 tools/isa.py research-targets "Hero MotoCorp" SANGHVIMOV
 python3 tools/isa.py coverage                      # company data per holding
+python3 tools/isa.py scorecard --compact           # 12 long-investor metrics + your return/yr per stock
 python3 tools/isa.py check-facts --symbol SANGHVIMOV
 python3 tools/isa.py confirm-facts --source SANGHVIMOV-AR-FY2026
 python3 tools/isa.py watch add HDFCBANK

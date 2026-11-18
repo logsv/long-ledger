@@ -21,6 +21,8 @@ th{color:var(--muted);font-weight:600}.num{text-align:right;font-variant-numeric
 .lbl{font-weight:700}.BUY{color:var(--buy)}.ACCUMULATE{color:var(--acc)}.HOLD{color:var(--hold)}
 .TRIM{color:var(--trim)}.SELL{color:var(--sell)}.INSUFFICIENT_DATA,.ETF{color:var(--na)}
 ul{margin:4px 0 0 18px;padding:0}.warn{border-left:3px solid var(--trim)}
+.good{color:var(--buy);font-weight:650}.bad{color:var(--sell);font-weight:650}.ok{color:var(--hold)}
+.missing{color:var(--muted)}.sc td{white-space:nowrap}
 """
 
 
@@ -150,6 +152,8 @@ def render(run: dict) -> str:
             out.append(_row(h["symbol"], h, by_sym.get(h["symbol"], {}), run))
     out.append("</table></div>")
 
+    out.append(_scorecard_table(holdings, run))
+
     watch = [s for s in sigs if not s["held"]]
     if watch:
         out.append("<h2>Watchlist</h2><div class='wrap'><table><tr><th>Stock</th><th>Label</th>"
@@ -186,6 +190,42 @@ def render(run: dict) -> str:
     else:
         out.append("<p class='muted'>No tax lots yet: import tradebooks with /import.</p>")
     out.append("</main></body></html>")
+    return "".join(out)
+
+
+SC_COLS = [("P/E", "pe", "x"), ("P/B", "pb", "x"), ("Div. yield", "dividend_yield", "%"),
+           ("ROCE", "roce", "%"), ("ROE", "roe", "%"), ("Cash conv.", "cash_conversion", "x"),
+           ("Rev. growth", "revenue_cagr", "%"), ("EPS growth", "eps_cagr", "%"),
+           ("Debt/eq.", "debt_to_equity", "x"), ("Int. cover", "interest_coverage", "x"), ("Promoter", "promoter", "%")]
+
+
+def _scorecard_table(holdings: list[dict], run: dict) -> str:
+    """Long-investor scorecard: one compact line per stock with company data."""
+    cards = run.get("scorecards") or {}
+    rows = [(h, cards[h["symbol"]]) for h in sorted(holdings, key=lambda h: -(h.get("weight") or 0))
+            if h["symbol"] in cards and cards[h["symbol"]]["filled"] >= 4]
+    head = ("<h2>Scorecard</h2><p class='muted'>Is it cheap, a good business, growing and safe? Colours use the same "
+            "thresholds as the labels. Return/yr is your annualised return on the shares you hold "
+            "(* under a year: total return; est.: some buy dates estimated). Stocks with fewer than 4 metrics are "
+            "left out; run <code>/research</code> to fill them.</p>")
+    if not rows:
+        return head + "<p class='muted'>No stock has enough company data yet.</p>"
+    out = [head, "<div class='wrap'><table class='sc'><tr><th>Stock</th><th class='num'>Return/yr</th>"
+           + "".join(f"<th class='num'>{escape(t)}</th>" for t, _, _ in SC_COLS) + "</tr>"]
+    for h, c in rows:
+        m = {x["key"]: x for g in c["groups"] for x in g["metrics"]}
+        yr = c.get("your_return") or {}
+        v = yr.get("value") if yr.get("value") is not None else yr.get("simple")
+        ret = "–" if v is None else (f"{v:+.1f}%" + ("" if yr.get("value") is not None else "*")
+                                     + (" est." if yr.get("estimated") else ""))
+        cells = []
+        for _, key, kind in SC_COLS:
+            x = m[key]
+            txt = "–" if x["value"] is None else (f"{x['value']:.1f}x" if kind == "x" else f"{x['value']:.1f}%")
+            cells.append(f"<td class='num {escape(x['tone'])}' title='{escape(x['text'])}'>{escape(txt)}</td>")
+        out.append(f"<tr><td>{escape(h['symbol'])}</td><td class='num' title='{escape(yr.get('text') or '')}'>"
+                   f"{escape(ret)}</td>{''.join(cells)}</tr>")
+    out.append("</table></div>")
     return "".join(out)
 
 
