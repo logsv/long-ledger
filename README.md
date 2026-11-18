@@ -112,7 +112,7 @@ Version 0.7.1.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 59 tests (66 with the local dashboard tests)
+python3 -m unittest discover -s tests  # 60 tests (67 with the local dashboard tests)
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -298,7 +298,7 @@ src/isa/
   report/  audit/         HTML report; hash-chained audit log
   web/                    local-only, git-ignored: dashboard server (server.py), JSON views (api.py),
                           static UI (index.html, app.js, app.css, vendor/tabulator)
-tools/                    isa.py (CLI), security_guards.py; dashboard.py (local-only, git-ignored)
+tools/                    isa.py (CLI), security_guards.py, kite_order_guard.py (read-only check for Kite's `orders` tool); dashboard.py (local-only, git-ignored)
 tests/                    unit and end-to-end tests (synthetic data only); test_web.py is local-only
 data/                     git-ignored: isa.db, imports/, reports/
 ```
@@ -308,7 +308,8 @@ How the pieces fit is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Safety
 
 See [SECURITY.md](SECURITY.md). In short:
-- **No orders, in four layers:** every broker order and GTT tool is denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
+- **No orders, in layers:** the older per-action broker order and GTT tools are denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
+- **Kite's combined `orders` tool.** Kite's MCP server now reads and changes orders through one `orders` tool with a `mode` argument, so a deny entry can't separate the two. `tools/kite_order_guard.py` is a PreToolUse hook script that allows only the read modes (`list`, `history`, `trades`, `all_trades`) and blocks everything else; it is tested in `tests/test_cli_guards.py`. It is **not yet registered** as a hook in `.claude/settings.json`, so until it is, Claude Code asks before every `orders` call: decline any call that isn't a read.
 - **No secrets in the repo.** Claude cannot read `.env`. 5paisa keys and tokens stay in the Keychain.
 - **Web research is limited to company websites.** Exchange and aggregator domains are denied. Searches carry company names only. Documents are confirmed automatically only if every consistency check passes.
 - **Untrusted data.** All broker output, web pages and imported files are treated as data, never as instructions.
