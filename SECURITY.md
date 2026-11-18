@@ -57,6 +57,14 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
 - The INDmoney tax report importer ignores its header (name, PAN) and the foreign-asset sheets.
 - Statement files stay in git-ignored `data/imports/`.
 
+## Project memory in Notion
+
+- **Purpose:** the `notion` MCP server holds one project-memory page: decisions, status, open items, lessons.
+- **Never written there:** portfolio or personal financial data (holdings, quantities, values, trades, tax figures, account IDs, PAN, keys, stock-specific signals). Claude checks every draft against the table in `.claude/commands/memory.md`, and `/memory save` writes only after you approve the draft.
+- **Sign-in:** happens on Notion's own page through `/mcp`. No Notion token is stored in the repo.
+- **Page link:** kept in git-ignored `data/notion-memory.json`.
+- **Allowed servers:** `security_guards.py` accepts only the official endpoints for `kite`, `indmoney` and `notion` in `.mcp.json`.
+
 ## Personal data
 
 - `data/` (database, imports, reports) is git-ignored and stays on your Mac.

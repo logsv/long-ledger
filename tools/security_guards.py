@@ -29,6 +29,8 @@ ORDER_TOOLS = {
 ALLOWED_SERVERS = {
     "indmoney": "https://mcp.indmoney.com/mcp",
     "kite": "https://mcp.kite.trade/mcp",
+    # Project memory only (decisions, status, open items). Never portfolio data: see /memory.
+    "notion": "https://mcp.notion.com/mcp",
 }
 REQUIRED_IGNORES = {".env", ".env.*", "creds.json", "data/*", "*.db", "*.pdf", "*.csv"}
 REQUIRED_DENY = {"Read(.env)", "Read(.env.*)", "Read(**/creds.json)",

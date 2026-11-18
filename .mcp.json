@@ -7,6 +7,10 @@
     "kite": {
       "type": "http",
       "url": "https://mcp.kite.trade/mcp"
+    },
+    "notion": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
     }
   }
 }

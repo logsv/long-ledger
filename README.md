@@ -118,6 +118,8 @@ python3 tools/security_guards.py       # order tools blocked, secrets ignored
 
 **Kite and INDmoney.** Open the folder in Claude Code and approve the project MCP servers (`kite`, `indmoney`). Run `/mcp` to sign in on each broker's own page.
 
+**Notion (optional, for project memory).** Approve the `notion` server, sign in through `/mcp`, then run `/memory setup`.
+
 **5paisa**, once:
 1. Copy `.env.example` to `.env` and fill in `FIVEPAISA_USER_KEY`, `FIVEPAISA_USER_ID` and `FIVEPAISA_CLIENT_CODE` from the [Xstream dashboard](https://xstream.5paisa.com/dashboard). Register `http://127.0.0.1:8765/5paisa/callback` as the redirect URL if the dashboard allows it.
 2. Store the encryption key in the Keychain. The command prompts for it, so it never appears on screen or in shell history:
@@ -204,6 +206,23 @@ It is built from the Python standard library plus [Tabulator](https://tabulator.
 - buttons need a per-run token and a same-origin request
 - no order actions exist: the allowed actions are fixed in `server.py`, and `tools/security_guards.py` scans `src/isa/web` for order-endpoint names whenever the folder is present
 
+## Project memory (Notion)
+
+Long-running projects lose context between sessions, so this one keeps its memory in **one Notion page**, written through Notion's official MCP server (`https://mcp.notion.com/mcp`, in `.mcp.json`).
+
+| Command | What it does |
+|---|---|
+| `/memory setup` | Sign in through `/mcp` (on Notion's own page), then create or link **"Long Ledger: Project Memory"**. The page link is saved in git-ignored `data/notion-memory.json` |
+| `/memory recall` | Summarises current status, recent decisions, open items and the last session's next steps, and flags commits the page doesn't mention yet |
+| `/memory save` | Drafts a session entry from git history and this session's decisions, shows it to you, and writes it only after you approve |
+| `/memory note "..."` | Appends one dated line |
+
+**What goes in, and what never does:**
+- **In:** decisions and reasons, architecture, commands, versions, commits, open items, lessons.
+- **Never:** holdings, quantities, values, trades, tax figures, account IDs, PAN, keys, or signals for specific stocks.
+
+The full table is in `.claude/commands/memory.md`. Claude checks every draft against it before writing.
+
 ## Slash commands
 
 | Command | What it does |
@@ -217,6 +236,7 @@ It is built from the Python standard library plus [Tabulator](https://tabulator.
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
 | `/research [--top N] [--refresh] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
+| `/memory [recall\|save\|note\|setup]` | Project memory in a Notion page: decisions, status, open items, lessons (never portfolio data) |
 
 ## Core CLI
 
@@ -263,9 +283,9 @@ All tunables are in `config/*.toml`:
 
 ```
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
-.mcp.json                 Kite and INDmoney MCP servers
+.mcp.json                 Kite and INDmoney MCP servers (data); Notion MCP server (project memory only)
 .claude/settings.json     permissions: order tools and exchange/aggregator sites denied; core CLI and dashboard launcher allowed
-.claude/commands/         /sync /research /dashboard /portfolio /report /sell-review /analyze /thesis /import
+.claude/commands/         /sync /research /dashboard /memory /portfolio /report /sell-review /analyze /thesis /import
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary, dashboard)
 .claude/agents/           company-researcher, filing-reader, governance-checker, news-summarizer (read-only)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)
