@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 # Incremental migrations applied after the v1 SCHEMA, keyed by target version.
 MIGRATIONS: dict[int, list[str]] = {
@@ -26,6 +26,21 @@ MIGRATIONS: dict[int, list[str]] = {
             note      TEXT,
             UNIQUE (symbol, ex_date, kind)
         )""",
+    ],
+    4: [  # /research attempts, so failed or partial runs can be retried
+        """CREATE TABLE IF NOT EXISTS research_run (
+            id           INTEGER PRIMARY KEY,
+            symbol       TEXT NOT NULL,
+            run_at       TEXT NOT NULL,
+            outcome      TEXT NOT NULL CHECK (outcome IN ('ok', 'partial', 'failed')),
+            facts_stored INTEGER NOT NULL DEFAULT 0,
+            site         TEXT,
+            note         TEXT
+        )""",
+        "CREATE INDEX IF NOT EXISTS research_run_symbol ON research_run(symbol, run_at)",
+    ],
+    5: [  # where a fact came from: the company's own documents, a third party, or model knowledge
+        "ALTER TABLE fundamental_fact ADD COLUMN origin TEXT NOT NULL DEFAULT 'official'",
     ],
 }
 

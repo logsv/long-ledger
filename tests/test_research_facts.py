@@ -64,5 +64,69 @@ class FactChecksTest(unittest.TestCase):
                 os.environ.pop("ISA_DB_PATH", None)
 
 
+    def test_unofficial_facts_never_auto_confirm(self):
+        conn = db()
+        rows = [{"symbol": "AAA", "metric": "revenue", "period_end": "2026-03-31", "published_at": "2026-05-10",
+                 "value": 120.0, "source": "AAA-NEWS-Q4", "source_ref": "https://news.example/aaa q4", "origin": "third_party"},
+                {"symbol": "AAA", "metric": "pat", "period_end": "2026-03-31", "published_at": "2026-05-10",
+                 "value": 12.0, "source": "AAA-MODEL", "source_ref": "model knowledge, no document", "origin": "model"}]
+        self.assertEqual(import_facts(conn, rows, "research", extracted_by="llm")["stored"], 2)
+        for src in ("AAA-NEWS-Q4", "AAA-MODEL"):
+            res = confirm_source(conn, src)
+            self.assertEqual(res["confirmed"], 0)
+            self.assertIn("confirmation by id", res["issues"][0]["issue"])
+        self.assertEqual({r["origin"] for r in pending_facts(conn)}, {"third_party", "model"})
+        bad = import_facts(conn, [{**rows[0], "origin": "rumour"}], "research", extracted_by="llm")
+        self.assertEqual(bad["stored"], 0)
+        bad = import_facts(conn, [rows[0]], "manual", extracted_by="import")
+        self.assertEqual(bad["stored"], 0)
+
+    def test_research_buckets_and_log(self):
+        import io, json, os, tempfile
+        from contextlib import redirect_stdout
+        from datetime import date
+        from isa import coverage
+        from isa.importers.broker import import_holdings
+        from isa.storage.db import connect
+
+        def run(*argv):
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(cli.main(list(argv)), 0)
+            return json.loads(buf.getvalue())
+
+        self.assertEqual(coverage.expected_annual_period(date(2026, 9, 30)), "2025-03-31")
+        self.assertEqual(coverage.expected_annual_period(date(2026, 10, 1)), "2026-03-31")
+        self.assertEqual(coverage.expected_shareholding_quarter(date(2026, 10, 20)), "2026-06-30")
+        self.assertEqual(coverage.expected_shareholding_quarter(date(2026, 10, 22)), "2026-09-30")
+        with tempfile.TemporaryDirectory() as d:
+            os.environ["ISA_DB_PATH"] = d + "/t.db"
+            try:
+                conn = connect(d + "/t.db")
+                import_holdings(conn, [{"symbol": s, "quantity": q, "last_price": 100}
+                                       for s, q in (("AAA", 30), ("BBB", 20), ("CCC", 10))], "kite", as_of="2026-11-14")
+                rows = [{"symbol": "AAA", "metric": m, "period_end": f"{y}-03-31", "published_at": f"{y}-08-01",
+                         "value": 100.0, "unit": "crore", "source": f"AR {y}"}
+                        for y in (2023, 2024, 2025) for m in ("revenue",)]
+                import_facts(conn, rows, "research", extracted_by="import")
+                conn.commit()
+                conn.close()
+                run("research-log", "BBB", "--outcome", "failed", "--note", "site down")
+                s = run("research-targets", "--summary", "--as-of", "2026-11-18")
+                self.assertEqual(s["buckets"]["new"]["top"], ["CCC"])
+                self.assertEqual(s["buckets"]["incomplete"]["top"], ["BBB"])
+                self.assertEqual(s["buckets"]["stale"]["top"], ["AAA"])  # FY2026 report is out
+                t = run("research-targets", "--only", "incomplete", "--as-of", "2026-11-18")["targets"]
+                self.assertEqual([x["symbol"] for x in t], ["BBB"])
+                self.assertIn("site down", t[0]["reasons"][0])
+                t = run("research-targets", "--range", "2-3", "--as-of", "2026-11-18")["targets"]
+                self.assertEqual([(x["rank"], x["symbol"]) for x in t], [(2, "BBB"), (3, "CCC")])
+                t = run("research-targets", "--only", "new", "--only", "stale", "--top", "1", "--as-of", "2026-11-18")
+                self.assertEqual([x["symbol"] for x in t["targets"]], ["AAA"])
+                self.assertEqual(run("research-log", "bbb", "--list")["runs"][0]["outcome"], "failed")
+            finally:
+                os.environ.pop("ISA_DB_PATH", None)
+
+
 if __name__ == "__main__":
     unittest.main()

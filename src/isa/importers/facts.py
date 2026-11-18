@@ -50,6 +50,9 @@ METRICS: dict[str, tuple[str, str]] = {
 EXTRACTED_BY = ("user", "import", "llm")
 
 
+ORIGINS = ("official", "third_party", "model")
+
+
 def import_facts(conn: sqlite3.Connection, records: list[dict], source: str,
                  extracted_by: str = "import", file_name: str | None = None) -> dict:
     if extracted_by not in EXTRACTED_BY:
@@ -76,17 +79,22 @@ def import_facts(conn: sqlite3.Connection, records: list[dict], source: str,
             if extracted_by == "llm" and not pick(row, ("source_ref",)):
                 raise ImportError_("LLM-extracted facts need source_ref (document + page)")
             row_source = pick(row, ("source",)) or source
+            origin = str(pick(row, ("origin",)) or "official").strip().lower()
+            if origin not in ORIGINS:
+                raise ImportError_(f"origin must be one of {ORIGINS}")
+            if origin != "official" and extracted_by != "llm":
+                raise ImportError_("third-party and model facts must be imported with --extracted-by llm")
             ensure_security(conn, sym)
             conn.execute(
                 "INSERT INTO fundamental_fact(symbol, metric, period_end, published_at, value,"
-                " source, source_ref, extracted_by, confirmed, import_id)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " source, source_ref, extracted_by, confirmed, import_id, origin)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(symbol, metric, period_end, source) DO UPDATE SET"
                 " value = excluded.value, published_at = excluded.published_at,"
                 " source_ref = excluded.source_ref, extracted_by = excluded.extracted_by,"
-                " confirmed = excluded.confirmed, import_id = excluded.import_id",
+                " confirmed = excluded.confirmed, import_id = excluded.import_id, origin = excluded.origin",
                 (sym, metric, period_end, published_at, value, row_source,
-                 pick(row, ("source_ref",)), extracted_by, confirmed, import_id),
+                 pick(row, ("source_ref",)), extracted_by, confirmed, import_id, origin),
             )
             stored += 1
         except ImportError_ as exc:
@@ -97,7 +105,7 @@ def import_facts(conn: sqlite3.Connection, records: list[dict], source: str,
 
 
 def pending_facts(conn: sqlite3.Connection, symbol: str | None = None) -> list[dict]:
-    q = ("SELECT id, symbol, metric, period_end, published_at, value, source, source_ref"
+    q = ("SELECT id, symbol, metric, period_end, published_at, value, source, source_ref, origin"
          " FROM fundamental_fact WHERE confirmed = 0")
     args: tuple = ()
     if symbol:
@@ -186,6 +194,13 @@ def confirm_source(conn: sqlite3.Connection, source: str, require_checks: bool =
     pending = [r["id"] for r in conn.execute(
         "SELECT id FROM fundamental_fact WHERE source = ? AND confirmed = 0", (source,))]
     if require_checks:
+        unofficial = conn.execute(
+            "SELECT DISTINCT origin FROM fundamental_fact WHERE source = ? AND confirmed = 0 AND origin != 'official'",
+            (source,)).fetchall()
+        if unofficial:  # third-party and model facts are never confirmed automatically
+            kinds = ", ".join(sorted(r[0] for r in unofficial))
+            return {"confirmed": 0, "pending": len(pending), "issues": [
+                {"source": source, "issue": f"{kinds} facts need the user's confirmation by id"}]}
         issues = check_facts(conn, source=source)
         if issues:
             return {"confirmed": 0, "pending": len(pending), "issues": issues}

@@ -9,14 +9,14 @@ A personal-use analysis workspace for long-term investors in Indian equities (NS
 
 ## Data sources
 
-Data comes from your three brokers (read-only) and from listed companies' own websites:
+Data comes from your three brokers (read-only) and from listed companies' own websites, with other public sources as a fallback:
 
 | Source | How | What it provides |
 |---|---|---|
 | **Zerodha Kite** | Official MCP server (`mcp.kite.trade`) | Holdings, today's trades, daily prices, **index and India VIX history**, instrument names and ISINs |
 | **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers |
 | **5paisa** | Xstream API, read-only client (`tools/isa.py fivepaisa`) | Holdings, today's trades, daily prices |
-| **Company websites** | `/research`: Claude web search and fetch, limited to each company's own investor-relations pages | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector |
+| **Company websites, then other public sources** | `/research`: the company's own investor pages and press releases first; if those lack data or block access, press-release wires, business news, credit-rating rationales and web search; model knowledge last, clearly marked | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector, recent news |
 
 The brokers do **not** provide company financials, valuation, shareholding, pledge data or sectors. Those come from **`/research`**:
 - A read-only subagent finds each company's official website and reads its annual reports, results and shareholding filings.
@@ -93,7 +93,7 @@ Version 0.7.1.
 | Risk flags, timing, tax view, report, audit log | Built |
 | Trade history imports | Built: Kite tradebook (CSV/XLSX); 5paisa Trade Listing and EQUITY Transaction statement; INDmoney consolidated tax report. Splits, off-market transfers and demergers are handled |
 | INDmoney full trade history | Not available yet. The tax report covers sold shares only, so current INDmoney holdings keep estimated dates |
-| Company data from company websites (`/research`) | Built: research subagent, fact checks, automatic confirmation of clean documents |
+| Company data from company websites (`/research`) | Built: research subagent with source tiers and fact origins, fact checks, automatic confirmation of clean official documents, retry of failed or partial runs, update of stale data |
 | Company scoring (fundamentals, governance, valuation) | Built. Active for each company once its data is confirmed |
 | Sector and events blocks | Planned |
 | Local dashboard (`/dashboard`) | Built, **local-only**: the code is git-ignored and kept on this machine; its command, skill and docs are in git |
@@ -112,7 +112,7 @@ Version 0.7.1.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 60 tests (67 with the local dashboard tests)
+python3 -m unittest discover -s tests  # 62 tests (69 with the local dashboard tests)
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -159,7 +159,7 @@ Kite and 5paisa sessions expire every day, which is a regulatory requirement, so
 3. Run **`/portfolio`**, or **`/report`** for the HTML version: market regime, allocation, limit breaches, labels, risk flags and tax waits.
 4. Optional: **`/dashboard`** to browse holdings, trades and tax lots with filters in your browser. After a later `/sync`, press **Refresh data**.
 
-Company data changes quarterly, not daily. Run **`/research`** once for your top holdings (`--top 20`), then `/research --refresh` after each results season.
+Company data changes quarterly, not daily. Run **`/research`** with no arguments to see what is not researched yet, what failed or is partial, and what is due for an update, then pick one and how many. After each results season, `/research stale` fetches only newer reports; `/research incomplete` retries failed or partial runs.
 
 Run `/sync` on every trading day you trade. The APIs only return that day's trades, and a missed day shows up as a reconciliation warning.
 
@@ -235,7 +235,7 @@ The full table is in `.claude/commands/memory.md`. Claude checks every draft aga
 | `/sell-review` | Holdings with triggers or flags, with lot-by-lot tax impact |
 | `/analyze SYMBOL` | Full breakdown for one stock: evidence, timing, flags, tax lots |
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
-| `/research [--top N] [--refresh] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
+| `/research [new\|incomplete\|stale] [--top N] [--range A-B] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion, sector and news, company websites first, checked and stored with sources and origin |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
 | `/memory [recall\|save\|note\|setup]` | Project memory in a Notion page: decisions, status, open items, lessons (portfolio data only with your approval) |
 
@@ -256,6 +256,9 @@ python3 tools/isa.py import-trades --source fivepaisa --file data/imports/Tradel
 python3 tools/isa.py import-5paisa-statement --file data/imports/EQUITY_Transaction_<...>.xlsx
 python3 tools/isa.py import-indmoney-tax --file "data/imports/consolidated_tax_report_2026-27.xlsx"
 python3 tools/isa.py research-targets --top 20     # what /research will fetch next
+python3 tools/isa.py research-targets --summary    # counts: new, incomplete (failed/partial), stale, current
+python3 tools/isa.py research-targets --only stale --range 1-20
+python3 tools/isa.py research-log --list          # recent research outcomes per stock
 python3 tools/isa.py research-targets "Hero MotoCorp" SANGHVIMOV
 python3 tools/isa.py coverage                      # company data per holding
 python3 tools/isa.py check-facts --symbol SANGHVIMOV
@@ -312,7 +315,7 @@ See [SECURITY.md](SECURITY.md). In short:
 - **No orders, in layers:** the older per-action broker order and GTT tools are denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
 - **Kite's combined `orders` tool.** Kite's MCP server now reads and changes orders through one `orders` tool with a `mode` argument, so a deny entry can't separate the two. `tools/kite_order_guard.py` is a PreToolUse hook script that allows only the read modes (`list`, `history`, `trades`, `all_trades`) and blocks everything else; it is tested in `tests/test_cli_guards.py`. It is registered as a PreToolUse hook on `mcp__kite__orders` in `.claude/settings.json`.
 - **No secrets in the repo.** Claude cannot read `.env`. 5paisa keys and tokens stay in the Keychain.
-- **Web research is limited to company websites.** Exchange and aggregator domains are denied. Searches carry company names only. Documents are confirmed automatically only if every consistency check passes.
+- **Web research starts with company websites.** Other public sources and model knowledge are fallbacks, and every fact records its origin. Exchange and aggregator domains are denied. Searches carry company names only. Only official documents are confirmed automatically, and only if every consistency check passes.
 - **Untrusted data.** All broker output, web pages and imported files are treated as data, never as instructions.
 
 ## Contributing

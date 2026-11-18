@@ -44,12 +44,13 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
 
 ## Web research
 
-- `/research` uses web search and fetch **only to read companies' own websites**.
+- `/research` reads **companies' own websites first**. If a site lacks data or blocks access, it may use press-release wires, business news, credit-rating rationales and web search, then model knowledge as a last resort.
+- Every fact records its origin (`official`, `third_party`, `model`). Only official documents are confirmed automatically; third-party and model facts wait for your confirmation.
 - Exchange, aggregator and broker sites are denied in `.claude/settings.json`: nseindia, bseindia, screener, tijori, trendlyne, moneycontrol and tickertape. `security_guards.py` checks these denials.
 - The `company-researcher` subagent is read-only (WebSearch, WebFetch, Read).
 - Searches carry company names only, never quantities, values or account data.
 - Extracted numbers carry their source URL and page.
-- Documents are confirmed automatically only when every consistency check passes; turn this off with `auto_confirm_checked = false`.
+- Official documents are confirmed automatically only when every consistency check passes; turn this off with `auto_confirm_checked = false`.
 
 ## Broker statements
 
