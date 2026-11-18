@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from collections import defaultdict
 
+from ..holdings import effective_snapshots, overlaps
 from ..tax import LotBook
 
 
@@ -27,13 +28,9 @@ def latest_prices(conn: sqlite3.Connection) -> dict[str, tuple[float, str]]:
     return out
 
 
-def latest_snapshots(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    """Rows of each source's most recent holdings snapshot."""
-    return conn.execute(
-        "SELECT h.* FROM holding_snapshot h JOIN"
-        " (SELECT source, MAX(as_of) a FROM holding_snapshot GROUP BY source) m"
-        " ON h.source = m.source AND h.as_of = m.a ORDER BY h.symbol"
-    ).fetchall()
+def latest_snapshots(conn: sqlite3.Connection) -> list[dict]:
+    """Each source's most recent holdings, with INDmoney's consolidated totals de-duplicated."""
+    return effective_snapshots(conn)
 
 
 def positions(conn: sqlite3.Connection, book: LotBook) -> dict[str, dict]:
@@ -163,6 +160,13 @@ def reconcile(conn: sqlite3.Connection, book: LotBook) -> list[dict]:
             issues.append({"account": account, "symbol": sym, "broker_quantity": s,
                            "lot_quantity": l_,
                            "hint": "import missing trades (older tradebook) or a corporate action"})
+    for o in overlaps(conn):
+        issues.append({"account": o["source"], "symbol": o["symbol"], "broker_quantity": o["aggregator_total"],
+                       "lot_quantity": None,
+                       "hint": f"INDmoney shows {o['aggregator_total']:g} in total, which includes the "
+                               f"{o['other_brokers']:g} held at Kite/5paisa; counted {o['counted']:g} as held in "
+                               "INDmoney itself. If that's not right, check the stock in the INDmoney app "
+                               "(its copy of other brokers can be a day old)"})
     starts = {r[0]: r[1] for r in conn.execute(
         "SELECT account, MIN(trade_date) FROM trade WHERE trade_id NOT LIKE 'indtax|%' GROUP BY account")}
     est: dict[str, int] = defaultdict(int)

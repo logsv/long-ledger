@@ -14,7 +14,7 @@ Data comes from your three brokers (read-only) and from listed companies' own we
 | Source | How | What it provides |
 |---|---|---|
 | **Zerodha Kite** | Official MCP server (`mcp.kite.trade`) | Holdings, today's trades, daily prices, **index and India VIX history**, instrument names and ISINs |
-| **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers |
+| **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers. INDmoney's quantities are totals across your linked Kite and 5paisa accounts, so only the part beyond those counts as held in INDmoney (see reconciliation) |
 | **5paisa** | Xstream API, read-only client (`tools/isa.py fivepaisa`) | Holdings, today's trades, daily prices |
 | **Company websites, then other public sources** | `/research`: the company's own investor pages and press releases first; if those lack data or block access, press-release wires, business news, credit-rating rationales and web search; model knowledge last, clearly marked | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector, recent news |
 
@@ -48,6 +48,7 @@ Research never fetches nseindia.com, bseindia.com, screener.in, tijorifinance.co
   - small caps 60%
   - 25% per sector, when sectors are known
 - Broker reconciliation: each broker's quantity per stock compared with your imported trade history. Gaps are explained (estimated opening lots, transfers) instead of left as mismatches.
+- No double counting: INDmoney reports one total per stock across the Kite and 5paisa accounts linked to it. For a stock Kite or 5paisa also hold, only INDmoney's total minus their quantities counts as INDmoney's own, and each such stock is listed in reconciliation so you can check it in the INDmoney app.
 
 **Risk flags per stock.** These are review prompts, not sell signals.
 
@@ -131,7 +132,7 @@ Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 65 tests (72 with the local dashboard tests)
+python3 -m unittest discover -s tests  # 67 tests (74 with the local dashboard tests)
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 

@@ -44,7 +44,7 @@ def run(conn: sqlite3.Connection, cfg: Config, as_of: date | None = None,
     cov = {h["symbol"]: coverage.status(conn, h["symbol"]) for h in view["holdings"] if not h["is_etf"]}
     names = {r[0]: r[1] for r in conn.execute("SELECT symbol, name FROM security")}
     from . import scorecard
-    cards = scorecard.build_all(conn, signals, as_of, taxes["lots"], cfg.valuation)
+    cards = scorecard.build_all(conn, signals, as_of, taxes["lots"], cfg.valuation, held)
     return {"as_of": as_of.isoformat(), "portfolio": view, "signals": signals, "tax": taxes,
             "pending_facts": pending, "market": market_info, "coverage": cov, "names": names,
             "scorecards": cards}

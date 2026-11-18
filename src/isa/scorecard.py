@@ -62,8 +62,14 @@ def xirr(flows: list[tuple[date, float]]) -> float | None:
     return (lo + hi) / 2
 
 
-def own_return(lots: list[dict], symbol: str, price: float | None, as_of: date) -> dict:
-    """Your annualised return on the shares you still hold (open lots, at the broker's cost)."""
+def own_return(lots: list[dict], symbol: str, price: float | None, as_of: date,
+               position: dict | None = None) -> dict:
+    """Your annualised return on the shares you still hold.
+
+    Buy dates come from your open lots. The amount invested is the broker's own
+    cost (the same figure P&L uses), spread over those dates in proportion to
+    each lot's cost, so P&L and return per year never disagree in sign.
+    """
     mine = [l for l in lots if l["symbol"] == symbol and l.get("cost_known", True) and l.get("cost")]
     if not mine or not price:
         return {"value": None, "estimated": False, "text": "no cost data"}
@@ -75,6 +81,12 @@ def own_return(lots: list[dict], symbol: str, price: float | None, as_of: date) 
         estimated |= bool(l.get("estimated"))
         flows.append((date.fromisoformat(d[:10]), -l["quantity"] * l["cost"]))
         qty += l["quantity"]
+    if position and position.get("cost_known") and position.get("cost") and position.get("quantity"):
+        lot_cost = -sum(v for _, v in flows)
+        if lot_cost > 0:  # broker cost, broker quantity; lot dates and proportions
+            k = position["cost"] / lot_cost
+            flows = [(d, v * k) for d, v in flows]
+            qty = position["quantity"]
     if not flows:
         return {"value": None, "estimated": estimated, "text": "no buy dates"}
     first = min(d for d, _ in flows)
@@ -89,12 +101,13 @@ def own_return(lots: list[dict], symbol: str, price: float | None, as_of: date) 
     r = xirr(flows)
     if r is None:
         return {"value": None, "estimated": estimated, "text": "not computable"}
-    note = " (est.: some shares were bought before this date, so the true yearly return is lower)" if estimated else ""
+    note = " (est.: some shares were bought before this date, so the true yearly figure is closer to zero)" if estimated else ""
     return {"value": round(r * 100, 1), "estimated": estimated,
             "text": f"{r * 100:.1f}% a year since {first.isoformat()}{note}"}
 
 
-def build(conn, signal: dict, as_of: date, lots: list[dict], cfg_valuation: dict | None = None) -> dict:
+def build(conn, signal: dict, as_of: date, lots: list[dict], cfg_valuation: dict | None = None,
+          position: dict | None = None) -> dict:
     """One stock's scorecard. Missing inputs show as None with a hint, never a guess."""
     sym = signal["symbol"]
     d = Data(conn, as_of)
@@ -175,12 +188,14 @@ def build(conn, signal: dict, as_of: date, lots: list[dict], cfg_valuation: dict
     filled = sum(1 for v in m.values() if v["value"] is not None)
     return {
         "symbol": sym, "price": price, "price_date": lp[1] if lp else None,
-        "market_cap_cr": mcap, "your_return": own_return(lots, sym, price, as_of),
+        "market_cap_cr": mcap, "your_return": own_return(lots, sym, price, as_of, position),
         "groups": [{"title": t, "metrics": [{"key": k, **m[k]} for k in keys]} for t, keys in GROUPS],
         "filled": filled, "of": len(m),
     }
 
 
-def build_all(conn, signals: list[dict], as_of: date, lots: list[dict], cfg_valuation: dict | None = None) -> dict:
-    return {s["symbol"]: build(conn, s, as_of, lots, cfg_valuation)
+def build_all(conn, signals: list[dict], as_of: date, lots: list[dict], cfg_valuation: dict | None = None,
+              positions: dict[str, dict] | None = None) -> dict:
+    positions = positions or {}
+    return {s["symbol"]: build(conn, s, as_of, lots, cfg_valuation, positions.get(s["symbol"]))
             for s in signals if s.get("label") != "ETF"}

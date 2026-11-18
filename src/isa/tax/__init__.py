@@ -95,10 +95,8 @@ def _opening_balances(conn: sqlite3.Connection, symbol: str | None) -> list[Lot]
     net traded quantity) was bought before D. For a broker with no trades at all,
     the whole holding is an opening balance with an unknown date.
     """
-    snaps = conn.execute(
-        "SELECT h.source, h.symbol, h.quantity, h.avg_price, h.as_of FROM holding_snapshot h JOIN"
-        " (SELECT source, MAX(as_of) a FROM holding_snapshot GROUP BY source) m"
-        " ON h.source = m.source AND h.as_of = m.a").fetchall()
+    from ..holdings import effective_snapshots  # INDmoney totals de-duplicated against Kite/5paisa
+    snaps = effective_snapshots(conn)
     # Trades rebuilt from a tax report cover only shares that were sold, so they say
     # nothing about when the remaining shares were bought: they don't set a start date.
     starts = {r[0]: r[1] for r in conn.execute(
