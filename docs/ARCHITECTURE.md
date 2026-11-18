@@ -56,6 +56,7 @@ flowchart LR
 | `importers/broker.py` | Holdings snapshots and delivery trades from Kite, INDmoney and 5paisa JSON or CSV. Intraday and derivative rows are skipped; trade IDs are de-duplicated |
 | `importers/market.py` | Daily prices (including indices) and the sector/industry list |
 | `importers/facts.py` | Fundamental and shareholding facts in long format, checked against a metric catalogue. LLM-extracted facts need a `source_ref` and stay unconfirmed until you approve them |
+| `importers/verify.py` | Blind cross-verification: targets without values, independence by registrable domain, deny-list and check-facts gates, tolerance match. Confirms matches only |
 | `engine/base.py` | Evidence types and the point-in-time `Data` view: only facts published on or before the evaluation date, and only confirmed LLM facts |
 | `engine/fundamentals.py` | Block (c): growth, ROE, ROCE, margins, leverage, coverage, cash conversion, FCF, working capital, payout |
 | `engine/governance.py` | Block (d): pledge, promoter and institutional trends, audit opinion, auditor resignation, related-party transactions, dilution. Produces vetoes |
@@ -98,6 +99,7 @@ Full details are in `.claude/skills/stock-analysis/02-scoring-rubric.md`.
 | `fundamental_fact` | One value per (symbol, metric, period, source), with `published_at`, `extracted_by` and `confirmed` |
 | `thesis_condition` | Your checkable conditions |
 | `signal` | Every computed label, with its full JSON payload and `inputs_hash` |
+| `fact_verification` | Each independent second reading of a pending fact, with its site and verdict |
 | `audit_event` | The hash-chained log |
 | `import_log` | One row per import |
 

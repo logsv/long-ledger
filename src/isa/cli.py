@@ -137,6 +137,21 @@ def cmd_check_facts(conn, cfg, args):
     return {"issues": issues, "passed": not issues}
 
 
+def cmd_verify_targets(conn, cfg, args):
+    from .importers import verify
+    return {"targets": verify.verify_targets(conn, args.symbol),
+            "denied_sites": sorted(verify.denied_sites())}
+
+
+def cmd_verify_facts(conn, cfg, args):
+    from .importers import verify
+    data = json.loads(Path(args.file).expanduser().read_text(encoding="utf-8"))
+    readings = data.get("readings", []) if isinstance(data, dict) else data
+    res = verify.apply_verifications(conn, readings, cfg.thresholds["verification"])
+    conn.commit()
+    return res
+
+
 def cmd_research_targets(conn, cfg, args):
     """Work queue for /research.
 
@@ -395,6 +410,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("check-facts", help="consistency checks on stored facts")
     s.add_argument("--symbol")
     s.add_argument("--source")
+    s = sub.add_parser("verify-targets", help="pending facts for the fact-verifier agent, without their values")
+    s.add_argument("--symbol")
+    s = sub.add_parser("verify-facts", help="apply independent second readings; confirms matches from another site")
+    s.add_argument("--file", required=True)
     s = sub.add_parser("research-targets", help="work queue for /research (by weight, or given symbols/names)")
     s.add_argument("queries", nargs="*", help="symbols or company names, e.g. SANGHVIMOV \"Sanghvi Movers\"")
     s.add_argument("--top", type=int, default=20)

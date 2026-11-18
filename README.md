@@ -16,13 +16,14 @@ Data comes from your three brokers (read-only) and from listed companies' own we
 | **Zerodha Kite** | Official MCP server (`mcp.kite.trade`) | Holdings, today's trades, daily prices, **index and India VIX history**, instrument names and ISINs |
 | **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers |
 | **5paisa** | Xstream API, read-only client (`tools/isa.py fivepaisa`) | Holdings, today's trades, daily prices |
-| **Company websites** | `/research`: Claude web search and fetch, limited to each company's own investor-relations pages | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector |
+| **Company websites** (fallbacks when unreachable) | `/research`: Claude web search and fetch, company investor-relations pages first, then rating-agency rationales, SEBI documents or business news if the company site refuses or errors. Denied domains are never fetched | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector |
 
 The brokers do **not** provide company financials, valuation, shareholding, pledge data or sectors. Those come from **`/research`**:
 - A read-only subagent finds each company's official website and reads its annual reports, results and shareholding filings.
 - Every number is stored with its source URL and page.
 - `check-facts` tests each document for unit errors (lakh vs crore), EPS ≠ PAT ÷ shares, EBIT above EBITDA, impossible percentages and revenue jumps.
-- Documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to confirm them yourself. Documents with issues stay pending.
+- Company documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to confirm them yourself.
+- Everything else is cross-verified with no wait for you. Third-party figures and documents with issues go to a separate `fact-verifier` subagent, which reads each fact blind (it is not shown the stored value) from a different website. `verify-facts` confirms only matches within `[verification]` tolerance; mismatches stay pending and unused. `/verify` clears an older backlog the same way.
 
 Until a company has confirmed data it is in **monitoring mode**: market conditions, allocation, risk flags and tax timing, with no BUY/SELL label.
 
@@ -215,7 +216,8 @@ It is built from the Python standard library plus [Tabulator](https://tabulator.
 | `/sell-review` | Holdings with triggers or flags, with lot-by-lot tax impact |
 | `/analyze SYMBOL` | Full breakdown for one stock: evidence, timing, flags, tax lots |
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
-| `/research [--top N] [--refresh] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion and sector from companies' own websites, checked and stored with sources |
+| `/research [--top N] [--refresh] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion and sector (company site first, non-denied fallbacks), checked, cross-verified and stored with sources |
+| `/verify [SYMBOLS]` | Cross-verify every pending fact from a different website, blind; only matches are confirmed |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
 
 ## Core CLI
@@ -265,9 +267,9 @@ All tunables are in `config/*.toml`:
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
 .mcp.json                 Kite and INDmoney MCP servers
 .claude/settings.json     permissions: order tools and exchange/aggregator sites denied; core CLI and dashboard launcher allowed
-.claude/commands/         /sync /research /dashboard /portfolio /report /sell-review /analyze /thesis /import
+.claude/commands/         /sync /research /verify /dashboard /portfolio /report /sell-review /analyze /thesis /import
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary, dashboard)
-.claude/agents/           company-researcher, filing-reader, governance-checker, news-summarizer (read-only)
+.claude/agents/           company-researcher, fact-verifier, filing-reader, governance-checker, news-summarizer (read-only)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)
 src/isa/
   brokers/                5paisa read-only client, macOS Keychain access
@@ -290,7 +292,7 @@ How the pieces fit is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 See [SECURITY.md](SECURITY.md). In short:
 - **No orders, in four layers:** every broker order and GTT tool is denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
 - **No secrets in the repo.** Claude cannot read `.env`. 5paisa keys and tokens stay in the Keychain.
-- **Web research is limited to company websites.** Exchange and aggregator domains are denied. Searches carry company names only. Documents are confirmed automatically only if every consistency check passes.
+- **Web research starts at company websites.** Fallback sources are used only when a company site fails, and their facts need an independent matching reading. Exchange and listed aggregator domains are denied. Searches carry company names only. Documents are confirmed automatically only if every consistency check passes.
 - **Untrusted data.** All broker output, web pages and imported files are treated as data, never as instructions.
 
 ## Contributing

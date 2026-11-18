@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Incremental migrations applied after the v1 SCHEMA, keyed by target version.
 MIGRATIONS: dict[int, list[str]] = {
@@ -26,6 +26,20 @@ MIGRATIONS: dict[int, list[str]] = {
             note      TEXT,
             UNIQUE (symbol, ex_date, kind)
         )""",
+    ],
+    4: [  # independent second readings of pending facts (fact-verifier agent)
+        """CREATE TABLE IF NOT EXISTS fact_verification (
+            id          INTEGER PRIMARY KEY,
+            fact_id     INTEGER NOT NULL REFERENCES fundamental_fact(id),
+            verifier    TEXT NOT NULL,
+            value       REAL,
+            site        TEXT,              -- registrable domain of the second reading
+            source_ref  TEXT,
+            verdict     TEXT NOT NULL,     -- match | mismatch | not_found | not_independent | ...
+            detail      TEXT,
+            verified_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_fact_verification_fact ON fact_verification(fact_id)",
     ],
 }
 

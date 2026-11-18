@@ -11,7 +11,8 @@ GENESIS = "0" * 64
 
 EVENT_TYPES = {
     "import",           # records or facts loaded
-    "fact_confirmed",   # user confirmed an LLM-extracted fact
+    "fact_confirmed",   # an LLM-extracted fact was confirmed (by the user, checks or verification)
+    "fact_verified",    # an independent second reading matched and confirmed a fact
     "signal",           # engine produced a label
     "decision",         # user recorded what they decided / did
     "thesis",           # thesis condition added or retired
