@@ -35,7 +35,7 @@ class ChartsTest(unittest.TestCase):
 
     def test_portfolio_charts_are_static_escaped_svg(self):
         out = charts.portfolio_charts(self.conn, self.run_, cfg().thresholds, AS_OF)
-        self.assertEqual(set(out), {"growth", "allocation", "returns", "tax"})
+        self.assertEqual(set(out), {"growth", "allocation", "returns", "tax", "tax_age", "tax_unlock", "tax_gains"})
         for html in out.values():
             self.assertNotIn("<script", html)
             self.assertIn("viz-fig", html)

@@ -95,6 +95,30 @@ Research never fetches nseindia.com, bseindia.com, screener.in, tijorifinance.co
 - **Missing data** shows as "–" with what's needed (usually `/research`), never an estimate.
 - Shown in the dashboard (Business and Valuation views, and a scorecard panel on row click), in the HTML report (Scorecard section) and by `/analyze`; `python3 tools/isa.py scorecard [SYMBOLS] [--compact]` prints it as JSON.
 
+**Charts** (in the dashboard and the HTML report; plain SVG, no scripts, light and dark):
+
+| Chart | What it answers |
+|---|---|
+| Your holdings vs money invested vs NIFTY 500 | Am I growing, and am I beating an index fund? Tiles show value, gain, your return per year and the NIFTY 500's on the same dates |
+| Allocation against your limits | Which sector, small-cap or gold + silver weight is over your limit |
+| Your return per year, best and worst | Which holdings have paid off, and which have tied up money |
+| Turning long-term in the next 90 days | Which lots to hold a little longer, and the tax if sold before |
+| How long you have held · Value turning long-term (12 months) · Unrealised gains by tax type | Tax-lot view: how much is already long-term, when the rest unlocks, and how much long-term exemption is left |
+| Per stock: price with your buys and sells, P/E against its own history, business trend (revenue, profit, ROCE) | Is this still a business worth holding at this price? |
+
+Every chart has hover values, a legend or direct labels, and a "Show data" table.
+
+**Sell check.** Four questions before selling, side by side, plus the tax cost:
+
+| Check | Question | Based on |
+|---|---|---|
+| Fundamentals | Is the business getting worse? | Fundamentals score now vs a year ago, recomputed with only the data public then |
+| Trend | Is the market telling me something? | 200-day average, relative strength vs NIFTY 500, drawdown |
+| Future | Is the reason I bought still true? | Your thesis conditions (`/thesis`) and recent news |
+| Team and governance | Can I trust the people running it? | Pledge, promoter change, auditor opinion, related-party transactions, dilution, vetoes |
+
+Each check shows ✓ OK, ! Watch, ✗ Concern or ? No data, with its reasons and charts (score history, price vs NIFTY 500, promoter holding and pledge). The checks never change the engine's label; they lay out the evidence. `/sell-review` and `python3 tools/isa.py sell-check` list the holdings worth a review; the dashboard shows it per stock, and the report has a Sell check table.
+
 **For each company with confirmed data** (from `/research` or `/import`):
 - **Scoring** on fundamentals, governance (red flags block a BUY) and valuation: own history, peers, and an intrinsic-value range with its assumptions shown.
 - **Labels:** BUY / ACCUMULATE / HOLD / TRIM / SELL, with confidence and a plain-language "why".
@@ -132,7 +156,7 @@ Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 68 tests (75 with the local dashboard tests)
+python3 -m unittest discover -s tests  # 78 tests (85 with the local dashboard tests)
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -201,9 +225,10 @@ A live view of the database in your browser:
 | Tab | What it shows |
 |---|---|
 | **Overview** | Value, market regime, allocation, limits, broker sync dates, what needs attention, sector indices |
-| **Holdings** | Three views: **Position** (brokers and quantities, value, weight, P&L, your return per year, label, flags, trend, company-data state), **Business** (ROCE, ROE, cash conversion, growth, debt, interest cover, promoter) and **Valuation** (price, market cap, P/E, P/B, dividend yield, vs fair value). Click a row for its scorecard, then "Trades & tax lots" |
+| **Charts** | Holdings vs invested vs NIFTY 500, allocation against limits, return per year by stock, lots turning long-term |
+| **Holdings** | Three views: **Position** (brokers and quantities, value, weight, P&L, your return per year, label, flags, trend, company-data state), **Business** (ROCE, ROE, cash conversion, growth, debt, interest cover, promoter) and **Valuation** (price, market cap, P/E, P/B, dividend yield, vs fair value). Click a row for its scorecard, its charts and its sell check, then "Trades & tax lots" |
 | **Trades** | All trades, with broker, side, source and date-range filters |
-| **Tax lots** | Lot type, buy date, term, wait date, estimated tax. There's a "turns long-term within 30 days" filter |
+| **Tax lots** | Three charts (gains by tax type, how long you have held, value turning long-term by month), then every lot: type, buy date, term, wait date, estimated tax, with a "turns long-term within 30 days" filter |
 | **Data quality** | Reconciliation, sells with no earlier buy, facts awaiting confirmation |
 
 **In every table:**
@@ -287,6 +312,7 @@ python3 tools/isa.py research-targets "Hero MotoCorp" SANGHVIMOV
 python3 tools/isa.py coverage                      # company data per holding
 python3 tools/isa.py scorecard --compact           # 12 long-investor metrics + your return/yr per stock
 python3 tools/isa.py daily                         # day change, label changes, new flags, limits, tax dates
+python3 tools/isa.py sell-check [SYMBOLS]          # four sell checks + tax if sold now (--history for score history)
 python3 tools/isa.py check-facts --symbol SANGHVIMOV
 python3 tools/isa.py confirm-facts --source SANGHVIMOV-AR-FY2026
 python3 tools/isa.py watch add HDFCBANK

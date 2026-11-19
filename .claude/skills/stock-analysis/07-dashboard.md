@@ -29,6 +29,8 @@
 | `GET /` | The page, with the per-run token in `<meta name="isa-token">` |
 | `GET /static/...` | Files under `web/static` only; path traversal is refused |
 | `GET /api/{overview,holdings,trades,lots,quality}` | JSON from a read-only database connection. Engine results are cached until refresh |
+| `GET /api/charts`, `/api/stock/<SYM>`, `/api/sellcheck/<SYM>` | Chart HTML built by `src/isa/charts.py` (plain SVG, every text value escaped) and the sell check. Symbols must match `[A-Z0-9&_.-]` and be a holding or watchlist stock |
+| `GET /static/charts.css` | `charts.CHART_CSS`, the stylesheet shared with the HTML report |
 | `POST /api/action/{refresh,recompute,report,fivepaisa_sync}` | Needs the `X-ISA-Token` header and a same-origin request. Each action is written to the audit log as `ui_action` |
 
 ## Security rules (never weaken)
