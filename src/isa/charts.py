@@ -444,9 +444,97 @@ def tax_chart(run: dict, days: int = 90) -> str:
     return _fig(title, sub, _hbar_svg(rows, fmt=lambda v: inr(v), label_w=150), table=table)
 
 
+def _lot_value(l: dict) -> float:
+    return l["quantity"] * (l.get("price") or 0.0)
+
+
+def holding_age_chart(run: dict, as_of: date) -> str:
+    title = "How long you have held"
+    buckets = [("Under 3 months", 0, 91), ("3–6 months", 91, 182), ("6–12 months", 182, 365),
+               ("1–2 years", 365, 730), ("2–3 years", 730, 1095), ("3 years +", 1095, 10 ** 6)]
+    val = [0.0] * len(buckets)
+    est = 0.0
+    for l in run["tax"]["lots"]:
+        d = l.get("acquired_before") if l.get("estimated") else l.get("buy_date")
+        if not d or not l.get("price"):
+            continue
+        age = (as_of - date.fromisoformat(d[:10])).days
+        i = next(k for k, (_, lo, hi) in enumerate(buckets) if lo <= age < hi)
+        val[i] += _lot_value(l)
+        if l.get("estimated"):
+            est += _lot_value(l)
+    total = sum(val)
+    if not total:
+        return _empty(title, "No priced tax lots yet.")
+    rows = [{"label": name, "value": v, "cls": "f1" if lo >= 365 else "f2",
+             "title": f"{name}: {inr(v, False)} ({v / total:.0%} of value), {'long' if lo >= 365 else 'short'}-term if sold today"}
+            for (name, lo, _), v in zip(buckets, val)]
+    lt = sum(v for (_, lo, _), v in zip(buckets, val) if lo >= 365)
+    sub = (f"Value by time since purchase. {lt / total:.0%} is already long-term (held over 12 months). "
+           + (f"{est / total:.0%} of value has estimated buy dates, shown at their latest possible date, so those "
+              "lots may be older." if est else ""))
+    return _fig(title, sub, _hbar_svg(rows, fmt=lambda v: inr(v), label_w=110),
+                legend=[("Long-term (over 12 months)", "bg1"), ("Short-term", "bg2")],
+                table=(["Held for", "Value", "Share"], [[r["label"], inr(v, False), pct(v / total * 100, False, 0)]
+                                                     for r, v in zip(rows, val)]))
+
+
+def lt_unlock_chart(run: dict, as_of: date, months: int = 12) -> str:
+    title = "Value turning long-term, next 12 months"
+    keys = []
+    y, m = as_of.year, as_of.month
+    for _ in range(months):
+        keys.append(f"{y}-{m:02d}")
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    val = dict.fromkeys(keys, 0.0)
+    gain = dict.fromkeys(keys, 0.0)
+    for l in run["tax"]["lots"]:
+        lt = l.get("long_term_from")
+        if not lt or (l.get("days_to_long_term") or 0) <= 0 or lt[:7] not in val:
+            continue
+        val[lt[:7]] += _lot_value(l)
+        gain[lt[:7]] += l.get("unrealised_gain") or 0.0
+    if not any(val.values()):
+        return _empty(title, "No short-term lots turn long-term in the next 12 months.")
+    labels = [date.fromisoformat(k + "-01").strftime("%b") for k in keys]
+    body = _columns_svg(labels, [val[k] or None for k in keys], lambda v: inr(v), w=520, h=170, cls="f1")
+    sub = ("Short-term lots by the month they become long-term. Selling them before then is taxed at the "
+           "short-term rate; after it, at the long-term rate.")
+    table = (["Month", "Value turning long-term", "Unrealised gain"],
+             [[date.fromisoformat(k + "-01").strftime("%b %Y"), inr(val[k], False), inr(gain[k], False)] for k in keys])
+    return _fig(title, sub, body.replace("viz-svg cols", "viz-svg bars"), table=table)
+
+
+def gains_by_term_chart(run: dict) -> str:
+    title = "Unrealised gains by tax type"
+    tax = run["tax"]
+    sums = {"lt_gain": 0.0, "lt_loss": 0.0, "st_gain": 0.0, "st_loss": 0.0}
+    for l in tax["lots"]:
+        g = l.get("unrealised_gain")
+        if g is None:
+            continue
+        k = ("lt" if l.get("term_if_sold_today") == "LTCG" else "st") + ("_gain" if g >= 0 else "_loss")
+        sums[k] += g
+    rows = [{"label": "Long-term gains", "value": sums["lt_gain"], "cls": "fgood", "title": f"Long-term gains {inr(sums['lt_gain'], False)}"},
+            {"label": "Long-term losses", "value": sums["lt_loss"], "cls": "fbad", "title": f"Long-term losses {inr(sums['lt_loss'], False)}"},
+            {"label": "Short-term gains", "value": sums["st_gain"], "cls": "fgood", "title": f"Short-term gains {inr(sums['st_gain'], False)}"},
+            {"label": "Short-term losses", "value": sums["st_loss"], "cls": "fbad", "title": f"Short-term losses {inr(sums['st_loss'], False)}"}]
+    left = tax.get("ltcg_exemption_remaining") or 0.0
+    sub = (f"If everything were sold today. Long-term gains exemption left this financial year: {inr(left, False)} "
+           f"of {inr(tax.get('ltcg_exemption', 0), False)} ({inr(tax.get('ltcg_realised_this_fy', 0), False)} already realised)."
+           + (" Booking long-term gains up to that amount before 31 March would be tax-free." if left > 0 else "")
+           + " Loss set-off is not modelled.")
+    return _fig(title, sub, _hbar_svg(rows, fmt=lambda v: inr(v), diverging=True, label_w=130),
+                table=(["Type", "Amount"], [[r["label"], inr(r["value"], False)] for r in rows]))
+
+
 def portfolio_charts(conn, run: dict, thresholds: dict, as_of: date) -> dict[str, str]:
     return {"growth": growth_chart(conn, run, as_of), "allocation": allocation_chart(run, thresholds),
-            "returns": returns_chart(run), "tax": tax_chart(run)}
+            "returns": returns_chart(run), "tax": tax_chart(run),
+            "tax_age": holding_age_chart(run, as_of), "tax_unlock": lt_unlock_chart(run, as_of),
+            "tax_gains": gains_by_term_chart(run)}
 
 
 # ---------------------------------------------------------------- per-stock charts
@@ -637,7 +725,8 @@ def sell_check_html(conn, check: dict, as_of: date, thresholds: dict, with_chart
     from .sellcheck import score_history
     tiles = []
     for c in check["checks"]:
-        lines = "".join(f"<li>{escape(x)}</li>" for x in c["lines"][:4])
+        lines = "".join(f"<li title='{escape(x)}'>{escape(x if len(x) <= 110 else x[:107] + '…')}</li>"
+                        for x in c["lines"][:4])
         tiles.append(f"<div class='sell-tile {escape(c['status'])}'><h4>{escape(c['title'])} {status_html(c['status'])}</h4>"
                      f"<p class='q'>{escape(c['question'])}</p><p class='h'>{escape(c['headline'])}</p>"
                      f"{'<ul>' + lines + '</ul>' if lines else ''}</div>")

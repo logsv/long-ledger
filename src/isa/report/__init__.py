@@ -190,6 +190,9 @@ def render(run: dict, charts: dict[str, str] | None = None, sell: str | None = N
     out.append(f"<h2>Tax view</h2><p class='muted'>{escape(tax['act'])}: STCG s.196, LTCG s.198. "
                f"LTCG exemption remaining this financial year: ₹{_n(tax['ltcg_exemption_remaining'])}. "
                f"Not modelled: {escape(', '.join(tax['not_modelled']))}.</p>")
+    if charts and tax["lots"]:
+        out.append("<div class='viz-grid2'>" + charts.get("tax_gains", "") + charts.get("tax_age", "") + "</div>"
+                   + charts.get("tax_unlock", ""))
     if tax["lots"]:
         out.append("<div class='wrap'><table><tr><th>Lot</th><th class='num'>Qty</th><th class='num'>Cost</th>"
                    "<th>Term today</th><th class='num'>Gain</th><th class='num'>Est. tax</th><th>Note</th></tr>")
