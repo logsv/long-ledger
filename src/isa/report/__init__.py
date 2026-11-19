@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from html import escape
+from ..charts import CHART_CSS
 
 CSS = """
 :root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6a65;--line:#e4e1d8;--card:#ffffff;
@@ -48,12 +49,13 @@ def _why(why: dict) -> str:
                  + [f"missing: {x}" for x in why.get("missing") or []])
 
 
-def render(run: dict) -> str:
+def render(run: dict, charts: dict[str, str] | None = None, sell: str | None = None) -> str:
+    """The HTML report. `charts` (from isa.charts.portfolio_charts) adds the Charts section."""
     pv, sigs, tax = run["portfolio"], run["signals"], run["tax"]
     by_sym = {s["symbol"]: s for s in sigs}
     out = [f"<!doctype html><html lang='en'><head><meta charset='utf-8'>"
            f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
-           f"<title>Portfolio Report {escape(run['as_of'])}</title><style>{CSS}</style></head><body><main>",
+           f"<title>Portfolio Report {escape(run['as_of'])}</title><style>{CSS}{CHART_CSS if charts or sell else ""}</style></head><body><main>",
            f"<h1>Portfolio report</h1><p class='muted'>As of {escape(run['as_of'])}. "
            "Personal use only. Not investment or tax advice. Labels are computed by code from stored data; "
            "you place any order yourself.</p>"]
@@ -79,6 +81,12 @@ def render(run: dict) -> str:
     else:
         out.append("<div class='card kpi'><span class='muted'>Labels</span><b>"
                    + escape(", ".join(f"{k} {v}" for k, v in sorted(counts.items()))) + "</b></div></div>")
+
+    if charts:
+        out.append("<h2>Charts</h2>" + charts.get("growth", "")
+                   + "<div class='viz-grid2'>" + charts.get("allocation", "") + charts.get("returns", "") + "</div>"
+                   + charts.get("tax", "")
+                   + "<p class='muted'>Hover a line or bar for values; \"Show data\" lists the numbers.</p>")
 
     alerts = []
     for b in pv["breaches"]:
@@ -153,6 +161,11 @@ def render(run: dict) -> str:
     out.append("</table></div>")
 
     out.append(_scorecard_table(holdings, run))
+
+    if sell is not None:
+        out.append("<h2>Sell check</h2><p class='muted'>Holdings worth a review: label TRIM or SELL, a sell trigger, "
+                   "or two or more concerns across fundamentals, trend, future (your thesis) and team. Hover a status "
+                   "for its reason; <code>/sell-review</code> or the dashboard shows the evidence and charts.</p>" + sell)
 
     watch = [s for s in sigs if not s["held"]]
     if watch:

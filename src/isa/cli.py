@@ -441,6 +441,27 @@ def cmd_daily(conn, cfg, args):
     }
 
 
+def cmd_sell_check(conn, cfg, args):
+    """Four sell checks (fundamentals, trend, future, team) with tax if sold now.
+
+    With symbols: those stocks. Without: held stocks worth a review (TRIM/SELL, a sell trigger, or 2+ concerns).
+    """
+    from . import sellcheck
+    as_of = _as_of(args)
+    run = service.run(conn, cfg, as_of, record=False)
+    if args.symbols:
+        want = {normalize_symbol(x) for x in args.symbols}
+        checks = [sellcheck.check(conn, cfg, s, as_of, run["tax"]["lots"]) for s in run["signals"] if s["symbol"] in want]
+        missing = sorted(want - {c["symbol"] for c in checks})
+    else:
+        checks, missing = sellcheck.sell_candidates(conn, cfg, run, as_of), []
+    if args.history:
+        for c in checks:
+            c["score_history"] = sellcheck.score_history(conn, c["symbol"], as_of, cfg.thresholds)
+    return {"as_of": as_of.isoformat(), "checks": checks, "not_found": missing,
+            "ltcg_exemption_remaining": run["tax"]["ltcg_exemption_remaining"]}
+
+
 def cmd_tax(conn, cfg, args):
     book = build_lots(conn, cfg.tax)
     from .portfolio import latest_prices
@@ -452,7 +473,11 @@ def cmd_report(conn, cfg, args):
     run = service.run(conn, cfg, _as_of(args), record=not args.no_record)
     out = Path(args.out).expanduser() if args.out else ROOT / "data" / "reports" / f"portfolio-{run['as_of']}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(run), encoding="utf-8")
+    from . import charts, sellcheck
+    as_of = date.fromisoformat(run["as_of"])
+    out.write_text(render(run, charts.portfolio_charts(conn, run, cfg.thresholds, as_of),
+                          sell=charts.sell_review_table(sellcheck.sell_candidates(conn, cfg, run, as_of))),
+                   encoding="utf-8")
     return {"report": str(out), "holdings": len(run["portfolio"]["holdings"]), "signals": len(run["signals"])}
 
 
@@ -611,6 +636,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("daily", help="daily summary: day change, label changes, new flags, limits, tax dates")
     s.add_argument("--as-of")
     s.add_argument("--no-record", action="store_true", help="do not store today's signals")
+    s = sub.add_parser("sell-check", help="four sell checks per stock: fundamentals, trend, future (thesis), team")
+    s.add_argument("symbols", nargs="*")
+    s.add_argument("--history", action="store_true", help="add fundamentals/governance score history (12 quarters)")
+    s.add_argument("--as-of")
     s = sub.add_parser("tax")
     s.add_argument("--as-of")
     s = sub.add_parser("decision", help="record what you decided or did")
