@@ -343,6 +343,104 @@ def cmd_portfolio(conn, cfg, args):
     }
 
 
+def _previous_signals(conn, before: str) -> dict[str, dict]:
+    """Each symbol's most recent stored signal from before a date (for day-over-day changes)."""
+    out = {}
+    for sym, payload in conn.execute(
+            "SELECT s.symbol, s.payload_json FROM signal s JOIN"
+            " (SELECT symbol, MAX(id) mid FROM signal WHERE as_of < ? GROUP BY symbol) m ON s.id = m.mid",
+            (before,)):
+        try:
+            out[sym] = json.loads(payload)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def cmd_daily(conn, cfg, args):
+    """Daily summary: day change, label changes, new flags and triggers, limits, tax dates, open items.
+
+    Records today's signals (like `portfolio`) unless --no-record, then compares with the last
+    signals stored before today.
+    """
+    from . import coverage
+    as_of = _as_of(args)
+    prev = _previous_signals(conn, as_of.isoformat())
+    run = service.run(conn, cfg, as_of, record=not args.no_record)
+    pv = run["portfolio"]
+    names = run.get("names") or {}
+    # day change: quantity x (latest price - previous daily close)
+    movers, day_change, prev_value = [], 0.0, 0.0
+    for h in pv["holdings"]:
+        if not h.get("price") or not h.get("price_date"):
+            continue
+        r = conn.execute("SELECT close, date FROM price_daily WHERE symbol = ? AND date < ? ORDER BY date DESC LIMIT 1",
+                         (h["symbol"], h["price_date"])).fetchone()
+        if not r or not r[0]:
+            continue
+        ch = h["quantity"] * (h["price"] - r[0])
+        day_change += ch
+        prev_value += h["quantity"] * r[0]
+        movers.append({"symbol": h["symbol"], "change": round(ch, 0), "change_pct": round(h["price"] / r[0] - 1, 4),
+                       "price": h["price"], "previous_close": r[0], "weight": h.get("weight")})
+    movers.sort(key=lambda m: m["change"])
+    label_changes, new_flags, new_triggers = [], [], []
+    for s in run["signals"]:
+        p = prev.get(s["symbol"])
+        if p and p.get("label") != s["label"]:
+            label_changes.append({"symbol": s["symbol"], "from": p.get("label"), "to": s["label"],
+                                  "confidence": s["confidence"], "since": p.get("as_of")})
+        old_f = {f["type"] for f in (p or {}).get("flags", [])}
+        for f in s.get("flags", []):
+            if f["type"] not in old_f and s["held"]:
+                new_flags.append({"symbol": s["symbol"], "flag": f["type"], "detail": f["detail"]})
+        old_t = {t["type"] for t in (p or {}).get("triggers", [])}
+        for t in s.get("triggers", []):
+            if t["type"] not in old_t:
+                new_triggers.append({"symbol": s["symbol"], "trigger": t["type"], "detail": t["detail"]})
+    soon_by: dict[str, dict] = {}
+    for l in run["tax"]["lots"]:
+        if l.get("days_to_long_term") is None or not 0 < l["days_to_long_term"] <= 30:
+            continue
+        e = soon_by.setdefault(l["symbol"], {"symbol": l["symbol"], "lots": 0, "quantity": 0.0, "first_long_term": None,
+                                             "last_long_term": None, "est_tax_if_sold_now": 0.0})
+        e["lots"] += 1
+        e["quantity"] += l["quantity"]
+        d_ = l.get("long_term_from")
+        e["first_long_term"] = min(filter(None, [e["first_long_term"], d_]), default=None)
+        e["last_long_term"] = max(filter(None, [e["last_long_term"], d_]), default=None)
+        e["est_tax_if_sold_now"] += l.get("est_tax_if_sold") or 0.0
+    for e in soon_by.values():
+        e["est_tax_if_sold_now"] = round(e["est_tax_if_sold_now"], 0)
+    soon = sorted(soon_by.values(), key=lambda e: e["first_long_term"] or "")
+    price_dates = sorted({h["price_date"] for h in pv["holdings"] if h.get("price_date")})
+    synced = [{"broker": r[0], "holdings_as_of": r[1]} for r in conn.execute(
+        "SELECT source, MAX(as_of) FROM holding_snapshot GROUP BY source ORDER BY source")]
+    stale_sync = [x["broker"] for x in synced if x["holdings_as_of"] < as_of.isoformat()]
+    buckets = {"new": 0, "incomplete": 0, "stale": 0}
+    for h in pv["holdings"]:
+        if h.get("is_etf"):
+            continue
+        b, _ = coverage.buckets(coverage.status(conn, h["symbol"]), as_of)
+        for k in buckets:
+            buckets[k] += k in b
+    return {
+        "as_of": as_of.isoformat(), "previous_signals_from": max((p.get("as_of") or "" for p in prev.values()), default=None),
+        "total_value": round(pv["total_value"], 0),
+        "day_change": round(day_change, 0), "day_change_pct": round(day_change / prev_value, 4) if prev_value else None,
+        "prices_as_of": price_dates[-1] if price_dates else None,
+        "top_gainers": [m for m in reversed(movers[-3:]) if m["change"] > 0],
+        "top_losers": [m for m in movers[:3] if m["change"] < 0],
+        "regime": run["market"].get("regime"), "market_missing": run["market"].get("missing", []),
+        "label_changes": label_changes, "new_flags": new_flags, "new_triggers": new_triggers,
+        "breaches": pv["breaches"], "turning_long_term_30d": soon,
+        "reconciliation_count": len(pv["reconciliation"]), "missing_price": pv["missing_price"],
+        "synced": synced, "not_synced_today": stale_sync,
+        "pending_facts": run["pending_facts"], "research": buckets,
+        "names": {k: names.get(k) for k in {x["symbol"] for x in label_changes + new_flags + new_triggers}},
+    }
+
+
 def cmd_tax(conn, cfg, args):
     book = build_lots(conn, cfg.tax)
     from .portfolio import latest_prices
@@ -510,6 +608,9 @@ def build_parser() -> argparse.ArgumentParser:
             s.add_argument("--out")
         s.add_argument("--as-of")
         s.add_argument("--no-record", action="store_true", help="do not store signals")
+    s = sub.add_parser("daily", help="daily summary: day change, label changes, new flags, limits, tax dates")
+    s.add_argument("--as-of")
+    s.add_argument("--no-record", action="store_true", help="do not store today's signals")
     s = sub.add_parser("tax")
     s.add_argument("--as-of")
     s = sub.add_parser("decision", help="record what you decided or did")

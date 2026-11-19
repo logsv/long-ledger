@@ -132,7 +132,7 @@ Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 67 tests (74 with the local dashboard tests)
+python3 -m unittest discover -s tests  # 68 tests (75 with the local dashboard tests)
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
@@ -171,6 +171,8 @@ Shares bought before your earliest imported trade become **estimated opening lot
 ## Daily use
 
 Kite and 5paisa sessions expire every day, which is a regulatory requirement, so each day starts with a sign-in on each broker's own page.
+
+**One command: `/daily`.** It checks the three sign-ins (and tells you which to redo), syncs all brokers, records today's signals and gives a short summary: total value and day change, label changes, new flags and triggers, biggest moves, limit breaches, lots turning long-term within 30 days with the tax you'd save by waiting, and what needs attention. `/daily --no-sync` summarises what is already stored. The steps it runs, if you prefer them one by one:
 
 1. Sign in: `/mcp` for Kite and INDmoney, and `python3 tools/isa.py fivepaisa login` for 5paisa.
 2. Run **`/sync`**. It pulls:
@@ -256,6 +258,7 @@ The full table is in `.claude/commands/memory.md`. Claude checks every draft aga
 | `/sell-review` | Holdings with triggers or flags, with lot-by-lot tax impact |
 | `/analyze SYMBOL` | Full breakdown for one stock: evidence, timing, flags, tax lots |
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
+| `/daily [--no-sync\|kite\|indmoney\|5paisa]` | Morning routine: sign-in check, sync, today's signals, and a summary of what changed since the last run |
 | `/research [new\|incomplete\|stale] [--top N] [--range A-B] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion, sector and news, company websites first, checked and stored with sources and origin |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
 | `/memory [recall\|save\|note\|setup]` | Project memory in a Notion page: decisions, status, open items, lessons (portfolio data only with your approval) |
@@ -283,6 +286,7 @@ python3 tools/isa.py research-log --list          # recent research outcomes per
 python3 tools/isa.py research-targets "Hero MotoCorp" SANGHVIMOV
 python3 tools/isa.py coverage                      # company data per holding
 python3 tools/isa.py scorecard --compact           # 12 long-investor metrics + your return/yr per stock
+python3 tools/isa.py daily                         # day change, label changes, new flags, limits, tax dates
 python3 tools/isa.py check-facts --symbol SANGHVIMOV
 python3 tools/isa.py confirm-facts --source SANGHVIMOV-AR-FY2026
 python3 tools/isa.py watch add HDFCBANK
@@ -311,7 +315,7 @@ All tunables are in `config/*.toml`:
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
 .mcp.json                 Kite and INDmoney MCP servers (data); Notion MCP server (project memory only)
 .claude/settings.json     permissions: order tools and exchange/aggregator sites denied; core CLI and dashboard launcher allowed
-.claude/commands/         /sync /research /dashboard /memory /portfolio /report /sell-review /analyze /thesis /import
+.claude/commands/         /daily /sync /research /dashboard /memory /portfolio /report /sell-review /analyze /thesis /import
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary, dashboard)
 .claude/agents/           company-researcher, filing-reader, governance-checker, news-summarizer (read-only)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)

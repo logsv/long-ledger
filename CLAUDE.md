@@ -38,6 +38,7 @@ This repo is a personal stock-analysis workspace for one long-term investor in I
 | Command | Purpose |
 |---|---|
 | `/sync` | Pull holdings, trades and prices from the Kite and INDmoney MCPs and the 5paisa read-only API into the database |
+| `/daily [--no-sync\|kite\|indmoney\|5paisa]` | Morning routine: sign-in check, `/sync`, then `isa.py daily` and a short summary of what changed (day change, label changes, new flags and triggers, limits, lots turning long-term). Never places orders |
 | `/research [new\|incomplete\|stale] [--top N] [--range A-B] [SYMBOLS]` | Fill financials, shareholding, pledge, auditor opinion, sector and news, company websites first (company-researcher subagent). No arguments: shows counts per bucket and asks what to research. Every outcome is logged with `research-log`. Official documents passing `check-facts` are auto-confirmed |
 | `/import` | Load files from `data/imports/` (CAS/tradebooks, prices, fundamentals, PDFs via the filing-reader subagent) and confirm extracted facts |
 | `/portfolio` | Score every holding and watchlist stock; show labels, triggers, caps and tax waits |

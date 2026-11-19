@@ -63,6 +63,20 @@ class CliTest(unittest.TestCase):
         self.assertTrue(run("audit", "verify")["ok"])
         run("decision", "GOODCO", "held", "--note", "reviewed")
 
+    def test_daily_summary(self):
+        run("init")
+        run("import-holdings", "--source", "kite", "--as-of", "2026-11-14", "--file",
+            self.write("h.json", {"data": [{"tradingsymbol": "GOODCO", "quantity": 10, "average_price": 150,
+                                            "last_price": 200}]}))
+        run("import-prices", "--symbol", "GOODCO", "--source", "test", "--file",
+            self.write("p.json", prices("GOODCO", 200.0, 0.001)))
+        run("daily", "--as-of", "2026-11-13")  # yesterday's signals
+        out = run("daily", "--as-of", "2026-11-14", "--no-record")
+        self.assertEqual(out["previous_signals_from"], "2026-11-13")
+        self.assertIsNotNone(out["day_change"])
+        for key in ("label_changes", "new_flags", "new_triggers", "breaches", "turning_long_term_30d", "research"):
+            self.assertIn(key, out)
+
     def test_bad_input_returns_error(self):
         buf = io.StringIO()
         with redirect_stdout(buf):
