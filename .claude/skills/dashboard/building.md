@@ -15,9 +15,9 @@
 | File | Role |
 |---|---|
 | `src/isa/web/server.py` | `Dashboard` (cached `service.run`, read-only database connections), `make_handler` (routes and security checks), `serve()`. The constants `HOST = "127.0.0.1"` and `ACTIONS` live here |
-| `src/isa/web/api.py` | JSON views: `overview`, `holdings`, `trades`, `lots`, `quality`. They return flat rows shaped for Tabulator |
+| `src/isa/web/api.py` | JSON views: `overview`, `holdings`, `trades`, `lots`, `quality`. They return flat rows shaped for Tabulator. Holdings rows carry the scorecard flattened as `m_<key>` (value), `t_<key>` (tone), `x_<key>` (text), plus `ret_yr` and the full `card` |
 | `src/isa/web/static/index.html` | Tabs, toolbars and buttons. `{{TOKEN}}` is replaced at serve time |
-| `src/isa/web/static/app.js` | Table definitions, toolbar filters, grouping, CSV download, row click-through, action calls |
+| `src/isa/web/static/app.js` | Table definitions, the Position / Business / Valuation column views (`VIEWS`), the scorecard panel (`renderScorecard`), toolbar filters, grouping, CSV download, action calls |
 | `src/isa/web/static/app.css` | Light and dark theme. Light uses `tabulator.min.css`, dark uses `tabulator_midnight.min.css` |
 | `src/isa/web/static/vendor/tabulator/` | `tabulator.min.js`, the CSS files, `LICENSE`, and `VERSION` with SHA-256 checksums |
 | `tests/test_web.py` | Server tests on a temporary database |
@@ -29,6 +29,8 @@
 | `GET /` | The page, with the per-run token in `<meta name="isa-token">` |
 | `GET /static/...` | Files under `web/static` only; path traversal is refused |
 | `GET /api/{overview,holdings,trades,lots,quality}` | JSON from a read-only database connection. Engine results are cached until refresh |
+| `GET /api/charts`, `/api/stock/<SYM>`, `/api/sellcheck/<SYM>` | Chart HTML built by `src/isa/charts.py` (plain SVG, every text value escaped) and the sell check. Symbols must match `[A-Z0-9&_.-]` and be a holding or watchlist stock |
+| `GET /static/charts.css` | `charts.CHART_CSS`, the stylesheet shared with the HTML report |
 | `POST /api/action/{refresh,recompute,report,fivepaisa_sync}` | Needs the `X-ISA-Token` header and a same-origin request. Each action is written to the audit log as `ui_action` |
 
 ## Security rules (never weaken)

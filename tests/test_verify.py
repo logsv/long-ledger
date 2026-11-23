@@ -7,10 +7,11 @@ from isa.importers.verify import apply_verifications, site_of, verify_targets
 DENIED = {"screener.in", "nseindia.com"}
 
 
-def pending(conn, metric="revenue", value=1000.0, ref="https://www.care-ratings.com/x.pdf p.2"):
+def pending(conn, metric="revenue", value=1000.0, ref="https://www.care-ratings.com/x.pdf p.2",
+            origin="third_party", source="ACME-CARE-FY2026"):
     import_facts(conn, [{"symbol": "ACME", "metric": metric, "period_end": "2026-03-31",
-                         "published_at": "2026-05-20", "value": value, "source": "ACME-CARE-FY2026",
-                         "source_ref": ref}], "research", extracted_by="llm")
+                         "published_at": "2026-05-20", "value": value, "source": source,
+                         "source_ref": ref, "origin": origin}], "research", extracted_by="llm")
     return pending_facts(conn)[0]["id"]
 
 
@@ -80,6 +81,16 @@ class VerifyTest(unittest.TestCase):
             a.write_text(json.dumps({"permissions": {"deny": ["WebFetch(domain:screener.in)", "Read(.env)"]}}))
             b.write_text(json.dumps({"permissions": {"deny": ["WebFetch(domain:www.pocketful.in)"]}}))
             self.assertEqual(denied_sites([a, b]), {"screener.in", "pocketful.in"})
+
+    def test_model_fact_confirmed_by_real_document(self):
+        fid = pending(self.conn, ref="model knowledge, no document", origin="model", source="ACME-MODEL")
+        self.assertEqual(verify_targets(self.conn)[0]["first_origin"], "model")
+        self.assertEqual(self.run_one(fid, 1000, "https://ir.acme.com/ar.pdf p.9")["verdict"], "match")
+        self.assertEqual(pending_facts(self.conn), [])
+
+    def test_official_fact_without_url_is_not_independent(self):
+        fid = pending(self.conn, ref="annual report p.4", origin="official", source="ACME-AR-FY2026")
+        self.assertEqual(self.run_one(fid, 1000, "https://ir.acme.com/ar.pdf")["verdict"], "not_independent")
 
     def test_tried_sites_are_avoided_next_time(self):
         fid = pending(self.conn)

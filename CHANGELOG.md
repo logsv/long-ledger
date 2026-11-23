@@ -2,6 +2,27 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `/research` picks what to research: with no arguments it shows counts per bucket and asks. The buckets are **new** (never researched), **incomplete** (last run failed or partial, partial data, pending facts) and **stale** (a newer annual report or shareholding quarter is due). `--top N` and `--range A-B` (weight ranks) limit the run.
+- `research-targets --summary`, `--only`, `--range`, `--older-than`, `--as-of`; each target carries `rank`, `buckets` and `reasons`.
+- `research-log` records each research outcome (ok, partial, failed) with a note, so failures can be retried. Schema v4 adds the `research_run` table.
+- `/research` sources in tiers: the company's own site (now including press releases) first; press-release wires, business news, credit-rating rationales and web search when the site lacks data or blocks access; model knowledge last. Each fact stores its `origin` (schema v5). Third-party and model facts are never auto-confirmed. The researcher also returns recent news and which sources it tried.
+- **Scorecard** per stock (`src/isa/scorecard.py`, `isa.py scorecard`): P/E with its own history, P/B, dividend yield, price vs fair value, ROCE, ROE, cash conversion, revenue and EPS growth, debt/equity, interest cover, promoter holding and pledge, plus your annualised return on open lots (total return under a year). Colours reuse the engine's bands. Shown in the HTML report, `/analyze` and the local dashboard (Position / Business / Valuation views and a scorecard panel).
+
+- **`/daily`**: sign-in check for Kite, INDmoney and 5paisa, sync, today's signals and a short summary. `isa.py daily` returns day change, top movers, label changes, new flags and triggers since the last stored signals, limit breaches, lots turning long-term within 30 days, and open items.
+
+- **Charts** (`src/isa/charts.py`), plain SVG shared by the HTML report and the dashboard, with hover values, legends or direct labels, "Show data" tables, and light and dark colours from a colour-blind-checked palette: holdings vs invested vs NIFTY 500 (with your return per year and the index's on the same dates), allocation against limits, return per year by stock, lots turning long-term; tax-lot charts (gains by tax type with exemption left, holding age, value turning long-term by month); per stock price with your trades, P/E against its own history, and business trend.
+- **Sell check** (`src/isa/sellcheck.py`, `isa.py sell-check`): fundamentals (score now vs a year ago, point-in-time), trend, future (thesis conditions and news) and team and governance, each OK / Watch / Concern / No data with reasons, plus tax if sold now. Charts: score history, price vs NIFTY 500, promoter holding and pledge. Used by `/sell-review`, the dashboard and the report; it never changes the label.
+
+### Fixed
+- **Double counting with INDmoney.** INDmoney's holdings are totals across the Kite and 5paisa accounts linked to it, and they were added on top of the quantities fetched from Kite and 5paisa. Now only the part of INDmoney's total beyond them counts as INDmoney's own (`src/isa/holdings.py`), in positions, weights, tax lots and reconciliation, and each overlapping stock gets a reconciliation note. On the real data this brought the total in line with INDmoney's own net worth (within 0.3%).
+- Return per year now uses the broker's cost (the figure P&L uses), spread over the open lots' buy dates, so it no longer disagrees with P&L.
+
+### Changed
+- Price: the broker's last price now wins over a daily close from the same day; a daily close is used only when newer. This applies to the engine too, so valuation uses the same price as the portfolio.
+
 ## [0.7.1] - 2026-11-15
 
 ### Changed

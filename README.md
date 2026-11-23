@@ -9,25 +9,28 @@ A personal-use analysis workspace for long-term investors in Indian equities (NS
 
 ## Data sources
 
-Data comes from your three brokers (read-only) and from listed companies' own websites:
+Data comes from your three brokers (read-only) and from listed companies' own websites, with other public sources as a fallback:
 
 | Source | How | What it provides |
 |---|---|---|
 | **Zerodha Kite** | Official MCP server (`mcp.kite.trade`) | Holdings, today's trades, daily prices, **index and India VIX history**, instrument names and ISINs |
-| **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers |
+| **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers. INDmoney's quantities are totals across your linked Kite and 5paisa accounts, so only the part beyond those counts as held in INDmoney (see reconciliation) |
 | **5paisa** | Xstream API, read-only client (`tools/isa.py fivepaisa`) | Holdings, today's trades, daily prices |
-| **Company websites** (fallbacks when unreachable) | `/research`: Claude web search and fetch, company investor-relations pages first, then rating-agency rationales, SEBI documents or business news if the company site refuses or errors. Denied domains are never fetched | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector |
+| **Company websites, then other public sources** | `/research`: the company's own investor pages and press releases first; if those lack data or block access, press-release wires, rating rationales, business news and web search; model knowledge last, clearly marked. Denied domains are never fetched | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector, recent news |
 
 The brokers do **not** provide company financials, valuation, shareholding, pledge data or sectors. Those come from **`/research`**:
-- A read-only subagent finds each company's official website and reads its annual reports, results and shareholding filings.
-- Every number is stored with its source URL and page.
+- A read-only subagent finds each company's official website and reads its annual reports, results, shareholding filings and press releases.
+- If the site lacks data or blocks access, it falls back to press-release wires, business news, credit-rating rationales and web search, and finally its own knowledge.
+- Every number is stored with its source URL and page, and an **origin**: `official`, `third_party` or `model`.
 - `check-facts` tests each document for unit errors (lakh vs crore), EPS ≠ PAT ÷ shares, EBIT above EBITDA, impossible percentages and revenue jumps.
-- Company documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to confirm them yourself.
-- Everything else is cross-verified with no wait for you. Third-party figures and documents with issues go to a separate `fact-verifier` subagent, which reads each fact blind (it is not shown the stored value) from a different website. `verify-facts` confirms only matches within `[verification]` tolerance; mismatches stay pending and unused. `/verify` clears an older backlog the same way.
+- Official documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to send them to cross-verification too.
+- Third-party and model numbers are cross-verified with no wait for you. A separate `fact-verifier` subagent reads each fact blind (it is not shown the stored value) from a different website. `verify-facts` confirms only matches within `[verification]` tolerance; mismatches stay pending and unused. `/verify` clears an older backlog the same way.
+- Up to 8 recent news items per company are kept as context, never as numbers.
+- Each run is logged as ok, partial or failed, so `/research incomplete` can retry what didn't work.
 
 Until a company has confirmed data it is in **monitoring mode**: market conditions, allocation, risk flags and tax timing, with no BUY/SELL label.
 
-Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com, trendlyne.com, moneycontrol.com or tickertape.in. Their terms forbid automated collection, or they are second-hand aggregators. These domains are denied in `.claude/settings.json`, and the safety guard checks it.
+Research never fetches nseindia.com, bseindia.com, screener.in, tijorifinance.com, trendlyne.com, moneycontrol.com or tickertape.in. Their terms forbid automated collection, or they are second-hand aggregators. These domains are denied in `.claude/settings.json`, and the safety guard checks it.
 
 ## What you get
 
@@ -45,6 +48,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
   - small caps 60%
   - 25% per sector, when sectors are known
 - Broker reconciliation: each broker's quantity per stock compared with your imported trade history. Gaps are explained (estimated opening lots, transfers) instead of left as mismatches.
+- No double counting: INDmoney reports one total per stock across the Kite and 5paisa accounts linked to it. For a stock Kite or 5paisa also hold, only INDmoney's total minus their quantities counts as INDmoney's own, and each such stock is listed in reconciliation so you can check it in the INDmoney app.
 
 **Risk flags per stock.** These are review prompts, not sell signals.
 
@@ -73,8 +77,47 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
     | `demerger` | Shares from a demerger; cost to be apportioned per the company's notice |
 
     Unknown terms are taxed at the STCG rate as a worst case.
-- **HTML report:** one self-contained file. Each holding shows its company name, the brokers holding it with quantities, flags, trend and company-data coverage.
+- **HTML report:** one self-contained file. Each holding shows its company name, the brokers holding it with quantities, flags, trend and company-data coverage, plus a Scorecard table for stocks with company data.
 - **Audit log:** append-only and hash-chained. Records every import, signal and decision.
+
+**Scorecard per stock.** Twelve numbers a long-term investor checks, in four questions, plus your own return:
+
+| Question | Metrics |
+|---|---|
+| Is it cheap? | P/E (with its own history), P/B, dividend yield, price vs fair-value range |
+| Is it a good business? | ROCE, ROE, cash conversion (operating cash flow ÷ profit) |
+| Is it growing? | Revenue and EPS growth per year over 5 years (3 if shorter) |
+| Is it safe? | Debt/equity, interest cover, promoter holding and pledge |
+| Your return | Annualised return on the shares you hold, from your buy dates and the broker's cost. Under a year it shows total return instead |
+
+- **Broker data first:** price is the broker's last price (a daily close only if newer) and cost is the broker's average. No broker feed supplies ratios, so they are calculated from confirmed company facts.
+- **Colours** use the same thresholds as the labels, so a green ROCE always agrees with the fundamentals score.
+- **Missing data** shows as "–" with what's needed (usually `/research`), never an estimate.
+- Shown in the dashboard (Business and Valuation views, and a scorecard panel on row click), in the HTML report (Scorecard section) and by `/analyze`; `python3 tools/isa.py scorecard [SYMBOLS] [--compact]` prints it as JSON.
+
+**Charts** (in the dashboard and the HTML report; plain SVG, no scripts, light and dark):
+
+| Chart | What it answers |
+|---|---|
+| Your holdings vs money invested vs NIFTY 500 | Am I growing, and am I beating an index fund? Tiles show value, gain, your return per year and the NIFTY 500's on the same dates |
+| Allocation against your limits | Which sector, small-cap or gold + silver weight is over your limit |
+| Your return per year, best and worst | Which holdings have paid off, and which have tied up money |
+| Turning long-term in the next 90 days | Which lots to hold a little longer, and the tax if sold before |
+| How long you have held · Value turning long-term (12 months) · Unrealised gains by tax type | Tax-lot view: how much is already long-term, when the rest unlocks, and how much long-term exemption is left |
+| Per stock: price with your buys and sells, P/E against its own history, business trend (revenue, profit, ROCE) | Is this still a business worth holding at this price? |
+
+Every chart has hover values, a legend or direct labels, and a "Show data" table.
+
+**Sell check.** Four questions before selling, side by side, plus the tax cost:
+
+| Check | Question | Based on |
+|---|---|---|
+| Fundamentals | Is the business getting worse? | Fundamentals score now vs a year ago, recomputed with only the data public then |
+| Trend | Is the market telling me something? | 200-day average, relative strength vs NIFTY 500, drawdown |
+| Future | Is the reason I bought still true? | Your thesis conditions (`/thesis`) and recent news |
+| Team and governance | Can I trust the people running it? | Pledge, promoter change, auditor opinion, related-party transactions, dilution, vetoes |
+
+Each check shows ✓ OK, ! Watch, ✗ Concern or ? No data, with its reasons and charts (score history, price vs NIFTY 500, promoter holding and pledge). The checks never change the engine's label; they lay out the evidence. `/sell-review` and `python3 tools/isa.py sell-check` list the holdings worth a review; the dashboard shows it per stock, and the report has a Sell check table.
 
 **For each company with confirmed data** (from `/research` or `/import`):
 - **Scoring** on fundamentals, governance (red flags block a BUY) and valuation: own history, peers, and an intrinsic-value range with its assumptions shown.
@@ -83,7 +126,7 @@ Research never reads nseindia.com, bseindia.com, screener.in, tijorifinance.com,
 
 ## Status
 
-Version 0.7.1.
+Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research buckets and source tiers, schema v5, scorecard).
 
 | Area | Status |
 |---|---|
@@ -94,7 +137,7 @@ Version 0.7.1.
 | Risk flags, timing, tax view, report, audit log | Built |
 | Trade history imports | Built: Kite tradebook (CSV/XLSX); 5paisa Trade Listing and EQUITY Transaction statement; INDmoney consolidated tax report. Splits, off-market transfers and demergers are handled |
 | INDmoney full trade history | Not available yet. The tax report covers sold shares only, so current INDmoney holdings keep estimated dates |
-| Company data from company websites (`/research`) | Built: research subagent, fact checks, automatic confirmation of clean documents |
+| Company data from company websites (`/research`) | Built: research subagent with source tiers and fact origins, fact checks, automatic confirmation of clean official documents, retry of failed or partial runs, update of stale data |
 | Company scoring (fundamentals, governance, valuation) | Built. Active for each company once its data is confirmed |
 | Sector and events blocks | Planned |
 | Local dashboard (`/dashboard`) | Built, **local-only**: the code is git-ignored and kept on this machine; its command, skill and docs are in git |
@@ -113,11 +156,13 @@ Version 0.7.1.
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 59 tests (66 with the local dashboard tests)
+python3 -m unittest discover -s tests  # 78 tests (85 with the local dashboard tests)
 python3 tools/security_guards.py       # order tools blocked, secrets ignored
 ```
 
 **Kite and INDmoney.** Open the folder in Claude Code and approve the project MCP servers (`kite`, `indmoney`). Run `/mcp` to sign in on each broker's own page.
+
+**Notion (optional, for project memory).** Approve the `notion` server, sign in through `/mcp`, then run `/memory setup`.
 
 **5paisa**, once:
 1. Copy `.env.example` to `.env` and fill in `FIVEPAISA_USER_KEY`, `FIVEPAISA_USER_ID` and `FIVEPAISA_CLIENT_CODE` from the [Xstream dashboard](https://xstream.5paisa.com/dashboard). Register `http://127.0.0.1:8765/5paisa/callback` as the redirect URL if the dashboard allows it.
@@ -142,13 +187,16 @@ python3 tools/security_guards.py       # order tools blocked, secrets ignored
 Shares bought before your earliest imported trade become **estimated opening lots**: quantities reconcile, but their buy date shows as "before <date>". Import older tradebooks to replace them with exact lots. After that, `/sync` adds new trades each day.
 
 **Company data**, first run:
-1. Run `/research --top 5` and review the result: sources, confirmed documents, anything pending.
-2. Then run `/research --top 20`. The top 20 holdings cover most of the portfolio's value.
-3. Holdings beyond those can follow in later runs.
+1. Run `/research` with no arguments. It shows how many holdings are not researched yet, failed or partial, or due for an update, with the share of portfolio value each covers, and asks which group and how many.
+2. Start small, for example `/research new --top 5`, and review the result: sources tried, confirmed documents, anything pending.
+3. Then widen it: `/research new --top 20` covers most of the portfolio's value, and `/research new --range 21-40` takes the next ranks by weight.
+4. Run `/research incomplete` to retry failed or partial companies.
 
 ## Daily use
 
 Kite and 5paisa sessions expire every day, which is a regulatory requirement, so each day starts with a sign-in on each broker's own page.
+
+**One command: `/daily`.** It checks the three sign-ins (and tells you which to redo), syncs all brokers, records today's signals and gives a short summary: total value and day change, label changes, new flags and triggers, biggest moves, limit breaches, lots turning long-term within 30 days with the tax you'd save by waiting, and what needs attention. `/daily --no-sync` summarises what is already stored. The steps it runs, if you prefer them one by one:
 
 1. Sign in: `/mcp` for Kite and INDmoney, and `python3 tools/isa.py fivepaisa login` for 5paisa.
 2. Run **`/sync`**. It pulls:
@@ -158,7 +206,7 @@ Kite and 5paisa sessions expire every day, which is a regulatory requirement, so
 3. Run **`/portfolio`**, or **`/report`** for the HTML version: market regime, allocation, limit breaches, labels, risk flags and tax waits.
 4. Optional: **`/dashboard`** to browse holdings, trades and tax lots with filters in your browser. After a later `/sync`, press **Refresh data**.
 
-Company data changes quarterly, not daily. Run **`/research`** once for your top holdings (`--top 20`), then `/research --refresh` after each results season.
+Company data changes quarterly, not daily. Run **`/research`** with no arguments to see what is not researched yet, what failed or is partial, and what is due for an update, then pick one and how many. After each results season, `/research stale` fetches only newer reports; `/research incomplete` retries failed or partial runs.
 
 Run `/sync` on every trading day you trade. The APIs only return that day's trades, and a missed day shows up as a reconciliation warning.
 
@@ -177,9 +225,10 @@ A live view of the database in your browser:
 | Tab | What it shows |
 |---|---|
 | **Overview** | Value, market regime, allocation, limits, broker sync dates, what needs attention, sector indices |
-| **Holdings** | Every stock with company name, brokers and quantities, value, weight, P&L, asset class, market cap, label, flags, trend and company-data state. Click a row to see its trades and lots |
+| **Charts** | Holdings vs invested vs NIFTY 500, allocation against limits, return per year by stock, lots turning long-term |
+| **Holdings** | Three views: **Position** (brokers and quantities, value, weight, P&L, your return per year, label, flags, trend, company-data state), **Business** (ROCE, ROE, cash conversion, growth, debt, interest cover, promoter) and **Valuation** (price, market cap, P/E, P/B, dividend yield, vs fair value). Click a row for its scorecard, its charts and its sell check, then "Trades & tax lots" |
 | **Trades** | All trades, with broker, side, source and date-range filters |
-| **Tax lots** | Lot type, buy date, term, wait date, estimated tax. There's a "turns long-term within 30 days" filter |
+| **Tax lots** | Three charts (gains by tax type, how long you have held, value turning long-term by month), then every lot: type, buy date, term, wait date, estimated tax, with a "turns long-term within 30 days" filter |
 | **Data quality** | Reconciliation, sells with no earlier buy, facts awaiting confirmation |
 
 **In every table:**
@@ -205,6 +254,24 @@ It is built from the Python standard library plus [Tabulator](https://tabulator.
 - buttons need a per-run token and a same-origin request
 - no order actions exist: the allowed actions are fixed in `server.py`, and `tools/security_guards.py` scans `src/isa/web` for order-endpoint names whenever the folder is present
 
+## Project memory (Notion)
+
+Long-running projects lose context between sessions, so this one keeps its memory in **one Notion page**, written through Notion's official MCP server (`https://mcp.notion.com/mcp`, in `.mcp.json`).
+
+| Command | What it does |
+|---|---|
+| `/memory setup` | Sign in through `/mcp` (on Notion's own page), then create or link **"Long Ledger: Project Memory"**. The page link is saved in git-ignored `data/notion-memory.json` |
+| `/memory recall` | Summarises current status, recent decisions, open items and the last session's next steps, and flags commits the page doesn't mention yet |
+| `/memory save` | Drafts a session entry from git history and this session's decisions, shows it to you, and writes it only after you approve |
+| `/memory note "..."` | Appends one dated line |
+
+**What goes in, and what never does:**
+- **In:** decisions and reasons, architecture, commands, versions, commits, open items, lessons.
+- **Only after you approve that write:** holdings, quantities, values, trades, tax figures, and analysis or signals for specific stocks. Claude shows the exact text first. Keep such pages private.
+- **Never:** account IDs, client codes, PAN, personal details from statements, keys or tokens.
+
+The full table is in `.claude/skills/memory/SKILL.md`. Claude checks every draft against it before writing.
+
 ## Slash commands
 
 | Command | What it does |
@@ -216,9 +283,11 @@ It is built from the Python standard library plus [Tabulator](https://tabulator.
 | `/sell-review` | Holdings with triggers or flags, with lot-by-lot tax impact |
 | `/analyze SYMBOL` | Full breakdown for one stock: evidence, timing, flags, tax lots |
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
-| `/research [--top N] [--refresh] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion and sector (company site first, non-denied fallbacks), checked, cross-verified and stored with sources |
+| `/daily [--no-sync\|kite\|indmoney\|5paisa]` | Morning routine: sign-in check, sync, today's signals, and a summary of what changed since the last run |
+| `/research [new\|incomplete\|stale] [--top N] [--range A-B] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion, sector and news, company websites first, checked, cross-verified and stored with sources and origin |
 | `/verify [SYMBOLS]` | Cross-verify every pending fact from a different website, blind; only matches are confirmed |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
+| `/memory [recall\|save\|note\|setup]` | Project memory in a Notion page: decisions, status, open items, lessons (portfolio data only with your approval) |
 
 ## Core CLI
 
@@ -237,8 +306,14 @@ python3 tools/isa.py import-trades --source fivepaisa --file data/imports/Tradel
 python3 tools/isa.py import-5paisa-statement --file data/imports/EQUITY_Transaction_<...>.xlsx
 python3 tools/isa.py import-indmoney-tax --file "data/imports/consolidated_tax_report_2026-27.xlsx"
 python3 tools/isa.py research-targets --top 20     # what /research will fetch next
+python3 tools/isa.py research-targets --summary    # counts: new, incomplete (failed/partial), stale, current
+python3 tools/isa.py research-targets --only stale --range 1-20
+python3 tools/isa.py research-log --list          # recent research outcomes per stock
 python3 tools/isa.py research-targets "Hero MotoCorp" SANGHVIMOV
 python3 tools/isa.py coverage                      # company data per holding
+python3 tools/isa.py scorecard --compact           # 12 long-investor metrics + your return/yr per stock
+python3 tools/isa.py daily                         # day change, label changes, new flags, limits, tax dates
+python3 tools/isa.py sell-check [SYMBOLS]          # four sell checks + tax if sold now (--history for score history)
 python3 tools/isa.py check-facts --symbol SANGHVIMOV
 python3 tools/isa.py confirm-facts --source SANGHVIMOV-AR-FY2026
 python3 tools/isa.py watch add HDFCBANK
@@ -265,9 +340,9 @@ All tunables are in `config/*.toml`:
 
 ```
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
-.mcp.json                 Kite and INDmoney MCP servers
+.mcp.json                 Kite and INDmoney MCP servers (data); Notion MCP server (project memory only)
 .claude/settings.json     permissions: order tools and exchange/aggregator sites denied; core CLI and dashboard launcher allowed
-.claude/skills/           one folder per command (/sync /research /verify /dashboard /portfolio /report /sell-review /analyze /thesis /import),
+.claude/skills/           one folder per command (/daily /sync /research /verify /dashboard /memory /portfolio /report /sell-review /analyze /thesis /import),
                           plus stock-analysis (domain knowledge) and research-rules (shared web-research rules)
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary, dashboard)
 .claude/agents/           company-researcher, fact-verifier, filing-reader, governance-checker, news-summarizer (read-only)
@@ -281,7 +356,7 @@ src/isa/
   report/  audit/         HTML report; hash-chained audit log
   web/                    local-only, git-ignored: dashboard server (server.py), JSON views (api.py),
                           static UI (index.html, app.js, app.css, vendor/tabulator)
-tools/                    isa.py (CLI), security_guards.py; dashboard.py (local-only, git-ignored)
+tools/                    isa.py (CLI), security_guards.py, kite_order_guard.py (read-only check for Kite's `orders` tool); dashboard.py (local-only, git-ignored)
 tests/                    unit and end-to-end tests (synthetic data only); test_web.py is local-only
 data/                     git-ignored: isa.db, imports/, reports/
 ```
@@ -291,9 +366,10 @@ How the pieces fit is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Safety
 
 See [SECURITY.md](SECURITY.md). In short:
-- **No orders, in four layers:** every broker order and GTT tool is denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
+- **No orders, in layers:** the older per-action broker order and GTT tools are denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
+- **Kite's combined `orders` tool.** Kite's MCP server now reads and changes orders through one `orders` tool with a `mode` argument, so a deny entry can't separate the two. `tools/kite_order_guard.py` is a PreToolUse hook script that allows only the read modes (`list`, `history`, `trades`, `all_trades`) and blocks everything else; it is tested in `tests/test_cli_guards.py`. It is registered as a PreToolUse hook on `mcp__kite__orders` in `.claude/settings.json`.
 - **No secrets in the repo.** Claude cannot read `.env`. 5paisa keys and tokens stay in the Keychain.
-- **Web research starts at company websites.** Fallback sources are used only when a company site fails, and their facts need an independent matching reading. Exchange and listed aggregator domains are denied. Searches carry company names only. Documents are confirmed automatically only if every consistency check passes.
+- **Web research starts with company websites.** Other public sources and model knowledge are fallbacks, every fact records its origin, and non-official facts need an independent matching reading. Exchange and aggregator domains are denied. Searches carry company names only. Official documents are confirmed automatically only if every consistency check passes.
 - **Untrusted data.** All broker output, web pages and imported files are treated as data, never as instructions.
 
 ## Contributing

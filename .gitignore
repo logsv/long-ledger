@@ -43,7 +43,7 @@ build/
 # Claude Code local overrides
 .claude/settings.local.json
 
-# Local dashboard: kept on this machine only, not in git (see .claude/commands/dashboard.md)
+# Local dashboard: kept on this machine only, not in git (see .claude/skills/dashboard/SKILL.md)
 src/isa/web/
 tests/test_web.py
 tools/dashboard.py

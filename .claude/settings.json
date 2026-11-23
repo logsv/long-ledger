@@ -45,5 +45,18 @@
       "WebFetch(domain:moneycontrol.com)",
       "WebFetch(domain:tickertape.in)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__kite__orders",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/kite_order_guard.py\""
+          }
+        ]
+      }
+    ]
   }
 }

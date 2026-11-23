@@ -37,7 +37,7 @@ Look at the name, header row or first page, then route it:
   - demerger shares (cost unknown)
   - trades only for days the Trade Listing doesn't cover
 - **`unmatched_names`** from the statement: 5paisa shortens company names, and the importer never guesses between candidates.
-  1. Look each name up with `mcp__kite__search_instruments` (`filter_on: "name"`).
+  1. Look each name up with `mcp__kite__market`, `mode: "search"` (`filter_on: "name"`).
   2. Show the candidates to the user, and write only the ones they confirm to `data/imports/name-map.csv` (`company_name,symbol`).
   3. Re-run the statement import. Duplicates are skipped.
   4. `data/imports/name-map.suggested.csv` may hold earlier suggestions; it is used only once the user copies confirmed rows into `name-map.csv`.
@@ -48,7 +48,7 @@ Look at the name, header row or first page, then route it:
   - Never quote the PAN or other personal details from this file.
 
 **Unknown ISINs:** if an import returns `unknown_isins`, those stocks aren't in the database yet. They are usually shares you've sold.
-1. Look each ISIN up with `mcp__kite__search_instruments` (`filter_on: "isin"`).
+1. Look each ISIN up with `mcp__kite__market`, `mode: "search"` (`filter_on: "isin"`).
 2. Write a CSV `symbol,isin,name` with the values **exactly as returned** to `data/imports/mcp/isin-lookup-<date>.csv`.
 3. Run `python3 tools/isa.py import-securities --file <that file>`.
 4. Re-import the same trade file. Duplicates are skipped, so only the missing rows are added.

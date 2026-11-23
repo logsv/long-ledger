@@ -7,7 +7,8 @@ the website the first reading came from, which the verifier must avoid.
 apply_verifications() then decides in code. A pending fact is confirmed only if
 all of these hold:
   - the second reading comes from a different website (registrable domain)
-    than the first,
+    than the first; a fact from model knowledge (origin 'model', no document)
+    counts as independent of any real document,
   - neither website is on the settings deny list,
   - the fact has no check_facts issue,
   - the two values agree within [verification] tolerances.
@@ -69,7 +70,7 @@ def _is_denied(site: str | None, denied: set[str]) -> bool:
 
 def verify_targets(conn: sqlite3.Connection, symbol: str | None = None) -> list[dict]:
     """Pending facts for the verifier, WITHOUT their values."""
-    q = ("SELECT f.id, f.symbol, f.metric, f.period_end, f.source, f.source_ref, s.name, s.isin"
+    q = ("SELECT f.id, f.symbol, f.metric, f.period_end, f.source, f.source_ref, f.origin, s.name, s.isin"
          " FROM fundamental_fact f LEFT JOIN security s ON s.symbol = f.symbol"
          " WHERE f.confirmed = 0")
     args: tuple = ()
@@ -83,6 +84,7 @@ def verify_targets(conn: sqlite3.Connection, symbol: str | None = None) -> list[
         out.append({"fact_id": r["id"], "symbol": r["symbol"], "name": r["name"], "isin": r["isin"],
                     "metric": r["metric"], "unit": METRICS[r["metric"]][0],
                     "description": METRICS[r["metric"]][1], "period_end": r["period_end"],
+                    "first_origin": r["origin"],
                     "avoid_sites": sorted({s for s in [site_of(r["source_ref"])] + tried if s})})
     return out
 
@@ -126,7 +128,7 @@ def apply_verifications(conn: sqlite3.Connection, readings: list[dict], vcfg: di
             verdict, detail = "no_source", "verifier reading has no source URL"
         elif _is_denied(site, denied) or _is_denied(orig, denied):
             verdict, detail = "denied_source", f"{site if _is_denied(site, denied) else orig} is on the deny list"
-        elif not orig:
+        elif not orig and fact["origin"] != "model":
             verdict, detail = "not_independent", "first reading has no source URL to compare against"
         elif site == orig:
             verdict, detail = "not_independent", f"both readings come from {site}"
@@ -136,9 +138,9 @@ def apply_verifications(conn: sqlite3.Connection, readings: list[dict], vcfg: di
             if issues:
                 verdict, detail = "check_issue", "; ".join(issues)
             elif abs(value - fact["value"]) <= tol:
-                verdict, detail = "match", f"{fact['value']} ({orig}) vs {value} ({site}), tolerance {tol:g}"
+                verdict, detail = "match", f"{fact['value']} ({orig or 'model'}) vs {value} ({site}), tolerance {tol:g}"
             else:
-                verdict, detail = "mismatch", f"{fact['value']} ({orig}) vs {value} ({site}), tolerance {tol:g}"
+                verdict, detail = "mismatch", f"{fact['value']} ({orig or 'model'}) vs {value} ({site}), tolerance {tol:g}"
         conn.execute(
             "INSERT INTO fact_verification(fact_id, verifier, value, site, source_ref, verdict, detail, verified_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -147,7 +149,7 @@ def apply_verifications(conn: sqlite3.Connection, readings: list[dict], vcfg: di
             confirm_facts(conn, [fid])
             append(conn, "fact_verified", {"fact_id": fid, "metric": fact["metric"],
                                            "period_end": fact["period_end"], "value": fact["value"],
-                                           "first_site": orig, "second_site": site,
+                                           "first_site": orig or "model", "second_site": site,
                                            "second_value": value}, symbol=fact["symbol"])
         results.append({"fact_id": fid, "symbol": fact["symbol"], "metric": fact["metric"],
                         "period_end": fact["period_end"], "verdict": verdict, "detail": detail})

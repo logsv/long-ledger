@@ -63,6 +63,20 @@ class CliTest(unittest.TestCase):
         self.assertTrue(run("audit", "verify")["ok"])
         run("decision", "GOODCO", "held", "--note", "reviewed")
 
+    def test_daily_summary(self):
+        run("init")
+        run("import-holdings", "--source", "kite", "--as-of", "2026-11-14", "--file",
+            self.write("h.json", {"data": [{"tradingsymbol": "GOODCO", "quantity": 10, "average_price": 150,
+                                            "last_price": 200}]}))
+        run("import-prices", "--symbol", "GOODCO", "--source", "test", "--file",
+            self.write("p.json", prices("GOODCO", 200.0, 0.001)))
+        run("daily", "--as-of", "2026-11-13")  # yesterday's signals
+        out = run("daily", "--as-of", "2026-11-14", "--no-record")
+        self.assertEqual(out["previous_signals_from"], "2026-11-13")
+        self.assertIsNotNone(out["day_change"])
+        for key in ("label_changes", "new_flags", "new_triggers", "breaches", "turning_long_term_30d", "research"):
+            self.assertIn(key, out)
+
     def test_bad_input_returns_error(self):
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -76,6 +90,18 @@ class GuardTest(unittest.TestCase):
         r = subprocess.run([sys.executable, str(ROOT / "tools" / "security_guards.py")],
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def _order_guard(self, payload: str) -> int:
+        return subprocess.run([sys.executable, str(ROOT / "tools" / "kite_order_guard.py")],
+                              input=payload, capture_output=True, text=True).returncode
+
+    def test_kite_order_guard_allows_read_modes_only(self):
+        for mode in ("list", "history", "trades", "all_trades"):
+            self.assertEqual(self._order_guard(json.dumps({"tool_input": {"mode": mode}})), 0, mode)
+        for mode in ("place", "modify", "cancel", "approval_status", "permissions", "", None):
+            self.assertEqual(self._order_guard(json.dumps({"tool_input": {"mode": mode}})), 2, mode)
+        for payload in ("", "not json", "{}", "[]"):
+            self.assertEqual(self._order_guard(payload), 2, payload)
 
 
 if __name__ == "__main__":

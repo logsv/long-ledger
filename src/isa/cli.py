@@ -152,16 +152,36 @@ def cmd_verify_facts(conn, cfg, args):
     return res
 
 
+BUCKETS = ("new", "incomplete", "stale", "current")
+
+
+def _parse_range(text: str | None) -> tuple[int, int] | None:
+    if not text:
+        return None
+    a, _, b = text.partition("-")
+    lo, hi = int(a), int(b or a)
+    if lo < 1 or hi < lo:
+        raise ValueError(f"--range must look like 21-40, got {text!r}")
+    return lo, hi
+
+
 def cmd_research_targets(conn, cfg, args):
     """Work queue for /research.
 
     With queries (symbols or company names): those companies. Without: equity
-    holdings by weight, then the watchlist. --refresh keeps only stocks that
-    have data but may have a newer report.
+    holdings by weight, then the watchlist, each with a rank. --only picks
+    buckets (new, incomplete, stale, current), --range picks ranks, --top
+    limits the count after filtering, --summary returns counts per bucket so
+    the user can choose.
     """
     from . import coverage
     from .portfolio import portfolio_view
     from .tax import build_lots
+    as_of = _as_of(args)
+    rng = _parse_range(args.range)
+    only = set(args.only or [])
+    if args.refresh:
+        only |= {"stale", "current"}
     view = portfolio_view(conn, build_lots(conn, cfg.tax), cfg.thresholds)
     weights = {h["symbol"]: h.get("weight") for h in view["holdings"]}
     out, unresolved = [], []
@@ -173,31 +193,63 @@ def cmd_research_targets(conn, cfg, args):
                 continue
             if r["symbol"] is None:  # a company not yet in the database
                 out.append({"symbol": None, "name": r["name"], "isin": None, "weight": None, "match": "new",
-                            "data": None, "needs": "identify symbol, then full history"})
+                            "rank": None, "data": None, "buckets": ["new"], "reasons": ["not in the database"],
+                            "needs": "identify symbol, then full history"})
                 continue
-            out.append({"symbol": r["symbol"], "name": r["name"], "isin": r["isin"], "match": r["match"]})
+            out.append({"symbol": r["symbol"], "name": r["name"], "isin": r["isin"], "match": r["match"], "rank": None})
     else:
         rows = sorted((h for h in view["holdings"] if not h["is_etf"]), key=lambda h: -(h.get("weight") or 0))
         held = {h["symbol"] for h in rows}
         watch = [r[0] for r in conn.execute("SELECT symbol FROM watchlist ORDER BY symbol")]
-        for sym in [h["symbol"] for h in rows] + [s for s in watch if s not in held]:
+        for i, sym in enumerate([h["symbol"] for h in rows] + [s for s in watch if s not in held], start=1):
             sec = conn.execute("SELECT name, isin FROM security WHERE symbol = ?", (sym,)).fetchone()
             out.append({"symbol": sym, "name": sec["name"] if sec else None, "isin": sec["isin"] if sec else None,
-                        "match": "portfolio"})
+                        "match": "portfolio" if sym in held else "watchlist", "rank": i})
     targets = []
     for t_ in out:
         if t_["symbol"]:
             st = coverage.status(conn, t_["symbol"])
-            if args.refresh and st["state"] == "none":
-                continue
-            t_.update(weight=weights.get(t_["symbol"]), data=st,
-                      needs="full history" if st["annual_years"] < 3 else "refresh if a newer report exists")
-        elif args.refresh:
-            continue
+            b, why = coverage.buckets(st, as_of, args.older_than)
+            t_.update(weight=weights.get(t_["symbol"]), data=st, buckets=b, reasons=why,
+                      needs="full history" if st["annual_years"] < 3 else
+                      "newer report" if "stale" in b else "retry" if "incomplete" in b else "up to date")
         targets.append(t_)
-    if not args.queries:
+    if rng:
+        targets = [t_ for t_ in targets if t_["rank"] and rng[0] <= t_["rank"] <= rng[1]]
+    if args.summary:
+        summ = {}
+        for name in BUCKETS:
+            hit = [t_ for t_ in targets if name in t_["buckets"]]
+            summ[name] = {"count": len(hit), "weight": round(sum(t_.get("weight") or 0 for t_ in hit), 4),
+                          "top": [t_["symbol"] for t_ in hit[:5]]}
+        return {"as_of": as_of.isoformat(), "candidates": len(targets), "range": args.range,
+                "expected_annual_period": coverage.expected_annual_period(as_of),
+                "expected_shareholding_quarter": coverage.expected_shareholding_quarter(as_of),
+                "buckets": summ, "unresolved": unresolved}
+    if only:
+        targets = [t_ for t_ in targets if only & set(t_["buckets"])]
+    if not args.queries and args.top:
         targets = targets[: args.top]
-    return {"targets": targets, "unresolved": unresolved, "metrics": list(facts.METRICS)}
+    return {"as_of": as_of.isoformat(), "targets": targets, "unresolved": unresolved, "metrics": list(facts.METRICS)}
+
+
+def cmd_research_log(conn, cfg, args):
+    """Record how a /research run went for one stock, or list recent runs."""
+    from datetime import datetime
+    if args.list:
+        q, p = "SELECT symbol, run_at, outcome, facts_stored, site, note FROM research_run", []
+        if args.symbol:
+            q, p = q + " WHERE symbol = ?", [args.symbol.upper()]
+        rows = [dict(r) for r in conn.execute(q + " ORDER BY run_at DESC, id DESC LIMIT ?", (*p, args.limit))]
+        return {"runs": rows}
+    if not args.symbol or not args.outcome:
+        raise ValueError("research-log needs SYMBOL and --outcome (or --list)")
+    sym = args.symbol.upper()
+    run_at = datetime.now().isoformat(timespec="seconds")
+    conn.execute("INSERT INTO research_run(symbol, run_at, outcome, facts_stored, site, note) VALUES (?,?,?,?,?,?)",
+                 (sym, run_at, args.outcome, args.facts, args.site, args.note))
+    conn.commit()
+    return {"logged": {"symbol": sym, "run_at": run_at, "outcome": args.outcome, "facts_stored": args.facts}}
 
 
 def cmd_coverage(conn, cfg, args):
@@ -211,6 +263,19 @@ def cmd_coverage(conn, cfg, args):
     return {"equity_holdings": len(rows), "with_full_data": len(covered),
             "value_share_covered": round(sum(r["weight"] or 0 for r in covered), 4),
             "holdings": sorted(rows, key=lambda r: -(r["weight"] or 0))}
+
+
+def cmd_scorecard(conn, cfg, args):
+    """Long-investor scorecard per stock: 12 metrics in 4 groups, plus your return per year."""
+    syms = [normalize_symbol(x) for x in args.symbols] or None
+    run = service.run(conn, cfg, _as_of(args), symbols=syms, record=False)
+    cards = run["scorecards"]
+    if args.compact:
+        return {"as_of": run["as_of"], "stocks": [
+            {"symbol": s, "filled": c["filled"], "of": c["of"], "your_return": c["your_return"]["text"],
+             **{m["key"]: m["value"] for g in c["groups"] for m in g["metrics"]}}
+            for s, c in cards.items()]}
+    return {"as_of": run["as_of"], "scorecards": cards}
 
 
 def cmd_metrics(conn, cfg, args):
@@ -293,6 +358,125 @@ def cmd_portfolio(conn, cfg, args):
     }
 
 
+def _previous_signals(conn, before: str) -> dict[str, dict]:
+    """Each symbol's most recent stored signal from before a date (for day-over-day changes)."""
+    out = {}
+    for sym, payload in conn.execute(
+            "SELECT s.symbol, s.payload_json FROM signal s JOIN"
+            " (SELECT symbol, MAX(id) mid FROM signal WHERE as_of < ? GROUP BY symbol) m ON s.id = m.mid",
+            (before,)):
+        try:
+            out[sym] = json.loads(payload)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def cmd_daily(conn, cfg, args):
+    """Daily summary: day change, label changes, new flags and triggers, limits, tax dates, open items.
+
+    Records today's signals (like `portfolio`) unless --no-record, then compares with the last
+    signals stored before today.
+    """
+    from . import coverage
+    as_of = _as_of(args)
+    prev = _previous_signals(conn, as_of.isoformat())
+    run = service.run(conn, cfg, as_of, record=not args.no_record)
+    pv = run["portfolio"]
+    names = run.get("names") or {}
+    # day change: quantity x (latest price - previous daily close)
+    movers, day_change, prev_value = [], 0.0, 0.0
+    for h in pv["holdings"]:
+        if not h.get("price") or not h.get("price_date"):
+            continue
+        r = conn.execute("SELECT close, date FROM price_daily WHERE symbol = ? AND date < ? ORDER BY date DESC LIMIT 1",
+                         (h["symbol"], h["price_date"])).fetchone()
+        if not r or not r[0]:
+            continue
+        ch = h["quantity"] * (h["price"] - r[0])
+        day_change += ch
+        prev_value += h["quantity"] * r[0]
+        movers.append({"symbol": h["symbol"], "change": round(ch, 0), "change_pct": round(h["price"] / r[0] - 1, 4),
+                       "price": h["price"], "previous_close": r[0], "weight": h.get("weight")})
+    movers.sort(key=lambda m: m["change"])
+    label_changes, new_flags, new_triggers = [], [], []
+    for s in run["signals"]:
+        p = prev.get(s["symbol"])
+        if p and p.get("label") != s["label"]:
+            label_changes.append({"symbol": s["symbol"], "from": p.get("label"), "to": s["label"],
+                                  "confidence": s["confidence"], "since": p.get("as_of")})
+        old_f = {f["type"] for f in (p or {}).get("flags", [])}
+        for f in s.get("flags", []):
+            if f["type"] not in old_f and s["held"]:
+                new_flags.append({"symbol": s["symbol"], "flag": f["type"], "detail": f["detail"]})
+        old_t = {t["type"] for t in (p or {}).get("triggers", [])}
+        for t in s.get("triggers", []):
+            if t["type"] not in old_t:
+                new_triggers.append({"symbol": s["symbol"], "trigger": t["type"], "detail": t["detail"]})
+    soon_by: dict[str, dict] = {}
+    for l in run["tax"]["lots"]:
+        if l.get("days_to_long_term") is None or not 0 < l["days_to_long_term"] <= 30:
+            continue
+        e = soon_by.setdefault(l["symbol"], {"symbol": l["symbol"], "lots": 0, "quantity": 0.0, "first_long_term": None,
+                                             "last_long_term": None, "est_tax_if_sold_now": 0.0})
+        e["lots"] += 1
+        e["quantity"] += l["quantity"]
+        d_ = l.get("long_term_from")
+        e["first_long_term"] = min(filter(None, [e["first_long_term"], d_]), default=None)
+        e["last_long_term"] = max(filter(None, [e["last_long_term"], d_]), default=None)
+        e["est_tax_if_sold_now"] += l.get("est_tax_if_sold") or 0.0
+    for e in soon_by.values():
+        e["est_tax_if_sold_now"] = round(e["est_tax_if_sold_now"], 0)
+    soon = sorted(soon_by.values(), key=lambda e: e["first_long_term"] or "")
+    price_dates = sorted({h["price_date"] for h in pv["holdings"] if h.get("price_date")})
+    synced = [{"broker": r[0], "holdings_as_of": r[1]} for r in conn.execute(
+        "SELECT source, MAX(as_of) FROM holding_snapshot GROUP BY source ORDER BY source")]
+    stale_sync = [x["broker"] for x in synced if x["holdings_as_of"] < as_of.isoformat()]
+    buckets = {"new": 0, "incomplete": 0, "stale": 0}
+    for h in pv["holdings"]:
+        if h.get("is_etf"):
+            continue
+        b, _ = coverage.buckets(coverage.status(conn, h["symbol"]), as_of)
+        for k in buckets:
+            buckets[k] += k in b
+    return {
+        "as_of": as_of.isoformat(), "previous_signals_from": max((p.get("as_of") or "" for p in prev.values()), default=None),
+        "total_value": round(pv["total_value"], 0),
+        "day_change": round(day_change, 0), "day_change_pct": round(day_change / prev_value, 4) if prev_value else None,
+        "prices_as_of": price_dates[-1] if price_dates else None,
+        "top_gainers": [m for m in reversed(movers[-3:]) if m["change"] > 0],
+        "top_losers": [m for m in movers[:3] if m["change"] < 0],
+        "regime": run["market"].get("regime"), "market_missing": run["market"].get("missing", []),
+        "label_changes": label_changes, "new_flags": new_flags, "new_triggers": new_triggers,
+        "breaches": pv["breaches"], "turning_long_term_30d": soon,
+        "reconciliation_count": len(pv["reconciliation"]), "missing_price": pv["missing_price"],
+        "synced": synced, "not_synced_today": stale_sync,
+        "pending_facts": run["pending_facts"], "research": buckets,
+        "names": {k: names.get(k) for k in {x["symbol"] for x in label_changes + new_flags + new_triggers}},
+    }
+
+
+def cmd_sell_check(conn, cfg, args):
+    """Four sell checks (fundamentals, trend, future, team) with tax if sold now.
+
+    With symbols: those stocks. Without: held stocks worth a review (TRIM/SELL, a sell trigger, or 2+ concerns).
+    """
+    from . import sellcheck
+    as_of = _as_of(args)
+    run = service.run(conn, cfg, as_of, record=False)
+    if args.symbols:
+        want = {normalize_symbol(x) for x in args.symbols}
+        checks = [sellcheck.check(conn, cfg, s, as_of, run["tax"]["lots"]) for s in run["signals"] if s["symbol"] in want]
+        missing = sorted(want - {c["symbol"] for c in checks})
+    else:
+        checks, missing = sellcheck.sell_candidates(conn, cfg, run, as_of), []
+    if args.history:
+        for c in checks:
+            c["score_history"] = sellcheck.score_history(conn, c["symbol"], as_of, cfg.thresholds)
+    return {"as_of": as_of.isoformat(), "checks": checks, "not_found": missing,
+            "ltcg_exemption_remaining": run["tax"]["ltcg_exemption_remaining"]}
+
+
 def cmd_tax(conn, cfg, args):
     book = build_lots(conn, cfg.tax)
     from .portfolio import latest_prices
@@ -304,7 +488,11 @@ def cmd_report(conn, cfg, args):
     run = service.run(conn, cfg, _as_of(args), record=not args.no_record)
     out = Path(args.out).expanduser() if args.out else ROOT / "data" / "reports" / f"portfolio-{run['as_of']}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(run), encoding="utf-8")
+    from . import charts, sellcheck
+    as_of = date.fromisoformat(run["as_of"])
+    out.write_text(render(run, charts.portfolio_charts(conn, run, cfg.thresholds, as_of),
+                          sell=charts.sell_review_table(sellcheck.sell_candidates(conn, cfg, run, as_of))),
+                   encoding="utf-8")
     return {"report": str(out), "holdings": len(run["portfolio"]["holdings"]), "signals": len(run["signals"])}
 
 
@@ -416,8 +604,26 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--file", required=True)
     s = sub.add_parser("research-targets", help="work queue for /research (by weight, or given symbols/names)")
     s.add_argument("queries", nargs="*", help="symbols or company names, e.g. SANGHVIMOV \"Sanghvi Movers\"")
-    s.add_argument("--top", type=int, default=20)
-    s.add_argument("--refresh", action="store_true", help="only stocks that already have data")
+    s.add_argument("--top", type=int, default=20, help="at most N targets after filtering (0 = no limit)")
+    s.add_argument("--range", help="weight ranks, e.g. 21-40 (portfolio order, then watchlist)")
+    s.add_argument("--only", action="append", choices=BUCKETS,
+                   help="new | incomplete (failed, partial, pending) | stale (newer report due) | current; repeatable")
+    s.add_argument("--older-than", type=int, help="also count data imported more than N days ago as stale")
+    s.add_argument("--summary", action="store_true", help="counts per bucket, to choose what to research")
+    s.add_argument("--refresh", action="store_true", help="only stocks that already have data (= --only stale --only current)")
+    s.add_argument("--as-of")
+    s = sub.add_parser("research-log", help="record or list /research outcomes per stock")
+    s.add_argument("symbol", nargs="?")
+    s.add_argument("--outcome", choices=["ok", "partial", "failed"])
+    s.add_argument("--facts", type=int, default=0, help="facts stored in this run")
+    s.add_argument("--site", help="official site used")
+    s.add_argument("--note", help="why it failed or what is missing")
+    s.add_argument("--list", action="store_true")
+    s.add_argument("--limit", type=int, default=50)
+    s = sub.add_parser("scorecard", help="long-investor scorecard: valuation, quality, growth, safety, your return/yr")
+    s.add_argument("symbols", nargs="*")
+    s.add_argument("--compact", action="store_true", help="one flat row per stock")
+    s.add_argument("--as-of")
     s = sub.add_parser("coverage", help="company-data coverage per holding")
     sub.add_parser("metrics", help="list accepted fact metrics")
     s = sub.add_parser("security", help="set sector/industry/name for a stock")
@@ -446,6 +652,13 @@ def build_parser() -> argparse.ArgumentParser:
             s.add_argument("--out")
         s.add_argument("--as-of")
         s.add_argument("--no-record", action="store_true", help="do not store signals")
+    s = sub.add_parser("daily", help="daily summary: day change, label changes, new flags, limits, tax dates")
+    s.add_argument("--as-of")
+    s.add_argument("--no-record", action="store_true", help="do not store today's signals")
+    s = sub.add_parser("sell-check", help="four sell checks per stock: fundamentals, trend, future (thesis), team")
+    s.add_argument("symbols", nargs="*")
+    s.add_argument("--history", action="store_true", help="add fundamentals/governance score history (12 quarters)")
+    s.add_argument("--as-of")
     s = sub.add_parser("tax")
     s.add_argument("--as-of")
     s = sub.add_parser("decision", help="record what you decided or did")

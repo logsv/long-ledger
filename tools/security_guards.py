@@ -33,6 +33,8 @@ ORDER_TOOLS = {
 ALLOWED_SERVERS = {
     "indmoney": "https://mcp.indmoney.com/mcp",
     "kite": "https://mcp.kite.trade/mcp",
+    # Project memory only (decisions, status, open items). Never portfolio data: see /memory.
+    "notion": "https://mcp.notion.com/mcp",
 }
 REQUIRED_IGNORES = {".env", ".env.*", "creds.json", "data/*", "*.db", "*.pdf", "*.csv"}
 REQUIRED_DENY = {"Read(.env)", "Read(.env.*)", "Read(**/creds.json)",
@@ -105,7 +107,7 @@ def check_fivepaisa_allowlist(errors: list[str]) -> None:
 
 
 # Skills that write data, call brokers, fetch the web or start servers: user-typed only.
-SIDE_EFFECT_SKILLS = {"sync", "import", "research", "verify", "dashboard", "thesis"}
+SIDE_EFFECT_SKILLS = {"daily", "sync", "import", "research", "verify", "dashboard", "thesis", "memory"}
 WEB_AGENTS = {"company-researcher", "fact-verifier"}
 UNSCOPED = re.compile(r"^(Bash|Write|Edit|NotebookEdit|WebFetch|Bash\(\*\)|Bash\(:\*\)|\*|mcp__[A-Za-z0-9_]+(__\*)?)$")
 WRITE_TOOLS = {"Write", "Edit", "NotebookEdit", "Bash"}

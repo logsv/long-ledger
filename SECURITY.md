@@ -44,18 +44,29 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
 
 ## Web research
 
-- `/research` uses web search and fetch **only to read companies' own websites**.
+- `/research` reads **companies' own websites first**. If a site lacks data or blocks access, it may use press-release wires, business news, credit-rating rationales and web search, then model knowledge as a last resort.
+- Every fact records its origin (`official`, `third_party`, `model`). Only official documents are confirmed automatically; third-party and model facts wait for your confirmation.
 - Exchange, aggregator and broker sites are denied in `.claude/settings.json`: nseindia, bseindia, screener, tijori, trendlyne, moneycontrol and tickertape. `security_guards.py` checks these denials.
 - The `company-researcher` subagent is read-only (WebSearch, WebFetch, Read).
 - Searches carry company names only, never quantities, values or account data.
 - Extracted numbers carry their source URL and page.
-- Documents are confirmed automatically only when every consistency check passes; turn this off with `auto_confirm_checked = false`.
+- Official documents are confirmed automatically only when every consistency check passes; turn this off with `auto_confirm_checked = false`.
 
 ## Broker statements
 
 - Tax reports and statements can contain your PAN and foreign-account details. Importers read only the trade rows they need.
 - The INDmoney tax report importer ignores its header (name, PAN) and the foreign-asset sheets.
 - Statement files stay in git-ignored `data/imports/`.
+
+## Project memory in Notion
+
+- **Purpose:** the `notion` MCP server holds one project-memory page: decisions, status, open items, lessons.
+- **Portfolio data:** holdings, quantities, values, trades, tax figures and stock-specific signals are written only after you approve that specific write. Claude shows the exact text first; one approval never covers later writes.
+- **Never written there:** account IDs, client codes, PAN, personal details from statements, keys and tokens. Claude checks every draft against the table in `.claude/skills/memory/SKILL.md`.
+- **Keep it private:** a Notion page with stock signals is for personal use. Sharing it would mean sharing recommendations.
+- **Sign-in:** happens on Notion's own page through `/mcp`. No Notion token is stored in the repo.
+- **Page link:** kept in git-ignored `data/notion-memory.json`.
+- **Allowed servers:** `security_guards.py` accepts only the official endpoints for `kite`, `indmoney` and `notion` in `.mcp.json`.
 
 ## Personal data
 
