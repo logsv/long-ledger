@@ -1,3 +1,10 @@
+---
+name: report
+description: Generate the self-contained HTML portfolio report for the user's own use.
+argument-hint: "[output path]"
+allowed-tools: Bash(python3 tools/isa.py:*)
+---
+
 # /report: HTML portfolio report
 
 1. Run `python3 tools/isa.py report`, or `python3 tools/isa.py report --out <path>` if `$ARGUMENTS` gives a path.

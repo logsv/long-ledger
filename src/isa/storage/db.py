@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Incremental migrations applied after the v1 SCHEMA, keyed by target version.
 MIGRATIONS: dict[int, list[str]] = {
@@ -41,6 +41,32 @@ MIGRATIONS: dict[int, list[str]] = {
     ],
     5: [  # where a fact came from: the company's own documents, a third party, or model knowledge
         "ALTER TABLE fundamental_fact ADD COLUMN origin TEXT NOT NULL DEFAULT 'official'",
+    ],
+    6: [  # independent second readings of pending facts (fact-verifier agent)
+        """CREATE TABLE IF NOT EXISTS fact_verification (
+            id          INTEGER PRIMARY KEY,
+            fact_id     INTEGER NOT NULL REFERENCES fundamental_fact(id),
+            verifier    TEXT NOT NULL,
+            value       REAL,
+            site        TEXT,              -- registrable domain of the second reading
+            source_ref  TEXT,
+            verdict     TEXT NOT NULL,     -- match | mismatch | not_found | not_independent | ...
+            detail      TEXT,
+            verified_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_fact_verification_fact ON fact_verification(fact_id)",
+        # A database migrated by an earlier build of this branch (where v4 was this table)
+        # skipped main's v4; recreate it here so either path ends with the same schema.
+        """CREATE TABLE IF NOT EXISTS research_run (
+            id           INTEGER PRIMARY KEY,
+            symbol       TEXT NOT NULL,
+            run_at       TEXT NOT NULL,
+            outcome      TEXT NOT NULL CHECK (outcome IN ('ok', 'partial', 'failed')),
+            facts_stored INTEGER NOT NULL DEFAULT 0,
+            site         TEXT,
+            note         TEXT
+        )""",
+        "CREATE INDEX IF NOT EXISTS research_run_symbol ON research_run(symbol, run_at)",
     ],
 }
 

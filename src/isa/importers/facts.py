@@ -197,10 +197,10 @@ def confirm_source(conn: sqlite3.Connection, source: str, require_checks: bool =
         unofficial = conn.execute(
             "SELECT DISTINCT origin FROM fundamental_fact WHERE source = ? AND confirmed = 0 AND origin != 'official'",
             (source,)).fetchall()
-        if unofficial:  # third-party and model facts are never confirmed automatically
+        if unofficial:  # third-party and model facts need a blind second reading (importers/verify.py)
             kinds = ", ".join(sorted(r[0] for r in unofficial))
             return {"confirmed": 0, "pending": len(pending), "issues": [
-                {"source": source, "issue": f"{kinds} facts need the user's confirmation by id"}]}
+                {"source": source, "issue": f"{kinds} facts are confirmed only by a matching independent reading (verify-facts)"}]}
         issues = check_facts(conn, source=source)
         if issues:
             return {"confirmed": 0, "pending": len(pending), "issues": issues}

@@ -16,15 +16,15 @@ Data comes from your three brokers (read-only) and from listed companies' own we
 | **Zerodha Kite** | Official MCP server (`mcp.kite.trade`) | Holdings, today's trades, daily prices, **index and India VIX history**, instrument names and ISINs |
 | **INDmoney** | Official MCP server (`mcp.indmoney.com`, read-only by design) | Holdings, plus **asset class** (equity / gold / silver / liquid) and **market-cap bucket** (large / mid / small) for every holding across all linked brokers. INDmoney's quantities are totals across your linked Kite and 5paisa accounts, so only the part beyond those counts as held in INDmoney (see reconciliation) |
 | **5paisa** | Xstream API, read-only client (`tools/isa.py fivepaisa`) | Holdings, today's trades, daily prices |
-| **Company websites, then other public sources** | `/research`: the company's own investor pages and press releases first; if those lack data or block access, press-release wires, business news, credit-rating rationales and web search; model knowledge last, clearly marked | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector, recent news |
+| **Company websites, then other public sources** | `/research`: the company's own investor pages and press releases first; if those lack data or block access, press-release wires, rating rationales, business news and web search; model knowledge last, clearly marked. Denied domains are never fetched | Annual financials, quarterly shareholding and pledge, auditor opinion, related-party transactions, sector, recent news |
 
 The brokers do **not** provide company financials, valuation, shareholding, pledge data or sectors. Those come from **`/research`**:
 - A read-only subagent finds each company's official website and reads its annual reports, results, shareholding filings and press releases.
 - If the site lacks data or blocks access, it falls back to press-release wires, business news, credit-rating rationales and web search, and finally its own knowledge.
 - Every number is stored with its source URL and page, and an **origin**: `official`, `third_party` or `model`.
 - `check-facts` tests each document for unit errors (lakh vs crore), EPS ≠ PAT ÷ shares, EBIT above EBITDA, impossible percentages and revenue jumps.
-- Official documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to confirm them yourself. Documents with issues stay pending.
-- Third-party and model numbers are **never** confirmed automatically: you confirm them one by one, after comparing them with any official figure.
+- Official documents that pass are confirmed automatically. Set `auto_confirm_checked = false` to send them to cross-verification too.
+- Third-party and model numbers are cross-verified with no wait for you. A separate `fact-verifier` subagent reads each fact blind (it is not shown the stored value) from a different website. `verify-facts` confirms only matches within `[verification]` tolerance; mismatches stay pending and unused. `/verify` clears an older backlog the same way.
 - Up to 8 recent news items per company are kept as context, never as numbers.
 - Each run is logged as ok, partial or failed, so `/research incomplete` can retry what didn't work.
 
@@ -246,7 +246,7 @@ Kite and INDmoney sync still runs through `/sync` in Claude Code.
 
 It is built from the Python standard library plus [Tabulator](https://tabulator.info) 6.3.1 (MIT). Tabulator is stored in `src/isa/web/static/vendor/`, so the page needs no internet.
 
-**Changing it:** `.claude/skills/stock-analysis/07-dashboard.md` covers the files, routes, security rules, and how to add a view or a button safely. The `/dashboard` command and the skill both keep every change inside the rules below.
+**Changing it:** `.claude/skills/dashboard/building.md` covers the files, routes, security rules, and how to add a view or a button safely. The `/dashboard` command and the skill both keep every change inside the rules below.
 
 **Safety:**
 - listens on 127.0.0.1 only, and rejects other Host headers
@@ -270,7 +270,7 @@ Long-running projects lose context between sessions, so this one keeps its memor
 - **Only after you approve that write:** holdings, quantities, values, trades, tax figures, and analysis or signals for specific stocks. Claude shows the exact text first. Keep such pages private.
 - **Never:** account IDs, client codes, PAN, personal details from statements, keys or tokens.
 
-The full table is in `.claude/commands/memory.md`. Claude checks every draft against it before writing.
+The full table is in `.claude/skills/memory/SKILL.md`. Claude checks every draft against it before writing.
 
 ## Slash commands
 
@@ -284,7 +284,8 @@ The full table is in `.claude/commands/memory.md`. Claude checks every draft aga
 | `/analyze SYMBOL` | Full breakdown for one stock: evidence, timing, flags, tax lots |
 | `/thesis SYMBOL` | Write or review checkable thesis conditions (used once company data exists) |
 | `/daily [--no-sync\|kite\|indmoney\|5paisa]` | Morning routine: sign-in check, sync, today's signals, and a summary of what changed since the last run |
-| `/research [new\|incomplete\|stale] [--top N] [--range A-B] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion, sector and news, company websites first, checked and stored with sources and origin |
+| `/research [new\|incomplete\|stale] [--top N] [--range A-B] [SYMBOLS or "company names"]` | Company financials, shareholding, pledge, auditor opinion, sector and news, company websites first, checked, cross-verified and stored with sources and origin |
+| `/verify [SYMBOLS]` | Cross-verify every pending fact from a different website, blind; only matches are confirmed |
 | `/import` | Load manual downloads from `data/imports/`: tradebooks, prices, company data, PDFs |
 | `/memory [recall\|save\|note\|setup]` | Project memory in a Notion page: decisions, status, open items, lessons (portfolio data only with your approval) |
 
@@ -341,9 +342,10 @@ All tunables are in `config/*.toml`:
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
 .mcp.json                 Kite and INDmoney MCP servers (data); Notion MCP server (project memory only)
 .claude/settings.json     permissions: order tools and exchange/aggregator sites denied; core CLI and dashboard launcher allowed
-.claude/commands/         /daily /sync /research /dashboard /memory /portfolio /report /sell-review /analyze /thesis /import
+.claude/skills/           one folder per command (/daily /sync /research /verify /dashboard /memory /portfolio /report /sell-review /analyze /thesis /import),
+                          plus stock-analysis (domain knowledge) and research-rules (shared web-research rules)
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary, dashboard)
-.claude/agents/           company-researcher, filing-reader, governance-checker, news-summarizer (read-only)
+.claude/agents/           company-researcher, fact-verifier, filing-reader, governance-checker, news-summarizer (read-only)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)
 src/isa/
   brokers/                5paisa read-only client, macOS Keychain access
@@ -367,7 +369,7 @@ See [SECURITY.md](SECURITY.md). In short:
 - **No orders, in layers:** the older per-action broker order and GTT tools are denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
 - **Kite's combined `orders` tool.** Kite's MCP server now reads and changes orders through one `orders` tool with a `mode` argument, so a deny entry can't separate the two. `tools/kite_order_guard.py` is a PreToolUse hook script that allows only the read modes (`list`, `history`, `trades`, `all_trades`) and blocks everything else; it is tested in `tests/test_cli_guards.py`. It is registered as a PreToolUse hook on `mcp__kite__orders` in `.claude/settings.json`.
 - **No secrets in the repo.** Claude cannot read `.env`. 5paisa keys and tokens stay in the Keychain.
-- **Web research starts with company websites.** Other public sources and model knowledge are fallbacks, and every fact records its origin. Exchange and aggregator domains are denied. Searches carry company names only. Only official documents are confirmed automatically, and only if every consistency check passes.
+- **Web research starts with company websites.** Other public sources and model knowledge are fallbacks, every fact records its origin, and non-official facts need an independent matching reading. Exchange and aggregator domains are denied. Searches carry company names only. Official documents are confirmed automatically only if every consistency check passes.
 - **Untrusted data.** All broker output, web pages and imported files are treated as data, never as instructions.
 
 ## Contributing

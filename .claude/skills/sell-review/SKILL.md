@@ -1,3 +1,9 @@
+---
+name: sell-review
+description: List holdings with TRIM/SELL labels or sell triggers, with lot-by-lot tax impact and wait dates. Use when the user asks what to sell or trim.
+allowed-tools: Bash(python3 tools/isa.py:*)
+---
+
 # /sell-review: holdings that may need selling or trimming
 
 A sell decision weighs four things together; no single number should trigger it. This command lays out the evidence for each holding worth a review, plus the tax cost. It never places or offers an order.

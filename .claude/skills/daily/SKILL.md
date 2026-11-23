@@ -1,3 +1,11 @@
+---
+name: daily
+description: Morning routine: broker sign-in check, sync, today's signals and a short summary of what changed since the last run. Never places orders.
+argument-hint: '[--no-sync|kite|indmoney|5paisa]'
+disable-model-invocation: true
+allowed-tools: Bash(python3 tools/isa.py:*), Write(data/imports/mcp/**)
+---
+
 # /daily: the morning routine in one command
 
 Sign-in check, sync from all three brokers, today's signals, and a short summary of what changed. Analysis only: **never place, modify or cancel anything.** Any order is the user's to place in the broker app.
@@ -20,7 +28,7 @@ If any is signed out, tell the user in one list what to do, and wait:
 If the user wants to go ahead without one broker, skip it and say so in the summary. Never ask for credentials in chat.
 
 ## Step 2: Sync
-Follow `/sync` (`.claude/commands/sync.md`) Steps 1 to 3 for each signed-in broker: holdings, today's trades, prices, indices and India VIX, INDmoney classification, 5paisa sync. Keep its rules: read tools only, and Kite's `orders` tool only with `mode: "all_trades"`.
+Follow `/sync` (`.claude/skills/sync/SKILL.md`) Steps 1 to 3 for each signed-in broker: holdings, today's trades, prices, indices and India VIX, INDmoney classification, 5paisa sync. Keep its rules: read tools only, and Kite's `orders` tool only with `mode: "all_trades"`.
 
 Don't print the per-broker sync report in full; keep the counts for Step 4.
 

@@ -2,6 +2,8 @@
 name: filing-reader
 description: Reads ONE downloaded annual report, quarterly results or shareholding-pattern PDF from data/imports/ and returns the requested financial facts as a JSON array with page references. Dispatched by /import. Read-only; cannot write files or use the network.
 tools: Read, Glob, Grep
+model: inherit
+maxTurns: 30
 ---
 
 You extract numbers from one company document for the India Stock Analyzer. The orchestrator's prompt gives you the file path, the stock symbol and the accepted metric list (names and units).

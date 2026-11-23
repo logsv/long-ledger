@@ -62,7 +62,7 @@ Run the guards before every commit: `python3 tools/security_guards.py`.
 
 - **Purpose:** the `notion` MCP server holds one project-memory page: decisions, status, open items, lessons.
 - **Portfolio data:** holdings, quantities, values, trades, tax figures and stock-specific signals are written only after you approve that specific write. Claude shows the exact text first; one approval never covers later writes.
-- **Never written there:** account IDs, client codes, PAN, personal details from statements, keys and tokens. Claude checks every draft against the table in `.claude/commands/memory.md`.
+- **Never written there:** account IDs, client codes, PAN, personal details from statements, keys and tokens. Claude checks every draft against the table in `.claude/skills/memory/SKILL.md`.
 - **Keep it private:** a Notion page with stock signals is for personal use. Sharing it would mean sharing recommendations.
 - **Sign-in:** happens on Notion's own page through `/mcp`. No Notion token is stored in the repo.
 - **Page link:** kept in git-ignored `data/notion-memory.json`.

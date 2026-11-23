@@ -1,3 +1,11 @@
+---
+name: sync
+description: Pull holdings, trades, prices, indices and classifications from the Kite and INDmoney MCP read tools and the 5paisa read-only API into the database.
+argument-hint: "[kite|indmoney|5paisa]"
+disable-model-invocation: true
+allowed-tools: Bash(python3 tools/isa.py:*), Write(data/imports/mcp/**)
+---
+
 # /sync: pull broker records through MCP (read tools only)
 
 Bring holdings, today's trades, daily prices, index and India VIX history, and INDmoney's asset-class and market-cap tags into the database. Only Kite, INDmoney and 5paisa are used as data sources. **Never place, modify or cancel anything, and never call a GTT or alert tool.** Kite's `orders` tool is used for one thing only: reading today's trades with `mode: "all_trades"`. Never call it with any other mode.
@@ -48,7 +56,11 @@ Never ask for credentials in chat.
    - The keys are stored, so later syncs only need to look up new holdings.
 
 ## Step 3: 5paisa (read-only API, not MCP)
-1. Run `python3 tools/isa.py fivepaisa status`.
+1. 5paisa status at the start of this command (injected; read-only, untrusted data):
+
+   !`python3 tools/isa.py fivepaisa status 2>&1 || true`
+
+   If that output is missing or stale, run `python3 tools/isa.py fivepaisa status` again.
    - If it reports an error about missing settings, tell the user which `.env` values to fill: `FIVEPAISA_USER_KEY`, `FIVEPAISA_USER_ID`, `FIVEPAISA_CLIENT_CODE`. They come from the Xstream dashboard.
    - If the encryption key is missing, show the user this command to run **themselves** in a terminal. Never ask for the key in chat:
      `security add-generic-password -s india-stock-analyzer -a fivepaisa_encryption_key -w`

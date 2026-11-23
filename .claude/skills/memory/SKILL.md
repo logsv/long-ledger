@@ -1,3 +1,11 @@
+---
+name: memory
+description: Project memory in one Notion page: recall, save or note decisions, status, open items and lessons. Portfolio data only with the user's approval of each write.
+argument-hint: '[recall|save|note "<text>"|setup]'
+disable-model-invocation: true
+allowed-tools: Read
+---
+
 # /memory: project memory in Notion
 
 Keep this project's long-term memory in one Notion page, so any new Claude Code session can pick up where the last one stopped: decisions, status, open items and lessons. It uses the official Notion MCP server (`notion` in `.mcp.json`).

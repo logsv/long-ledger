@@ -74,7 +74,7 @@ class FactChecksTest(unittest.TestCase):
         for src in ("AAA-NEWS-Q4", "AAA-MODEL"):
             res = confirm_source(conn, src)
             self.assertEqual(res["confirmed"], 0)
-            self.assertIn("confirmation by id", res["issues"][0]["issue"])
+            self.assertIn("verify-facts", res["issues"][0]["issue"])
         self.assertEqual({r["origin"] for r in pending_facts(conn)}, {"third_party", "model"})
         bad = import_facts(conn, [{**rows[0], "origin": "rumour"}], "research", extracted_by="llm")
         self.assertEqual(bad["stored"], 0)

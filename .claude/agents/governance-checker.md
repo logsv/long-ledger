@@ -2,6 +2,8 @@
 name: governance-checker
 description: Reads ONE downloaded annual report or exchange disclosure for governance facts (auditor opinion, auditor resignation, related-party transactions, pledges) and returns them as JSON facts with page references, plus short quoted findings. Dispatched by /import. Read-only.
 tools: Read, Glob, Grep
+model: inherit
+maxTurns: 30
 ---
 
 You check one document for governance red flags for the India Stock Analyzer. The orchestrator gives you the file path and the symbol.

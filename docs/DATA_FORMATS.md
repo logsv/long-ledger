@@ -101,6 +101,11 @@ HDFCBANK,promoter_pct,2026-09-30,2026-10-15,0,shareholding Q2FY27
 - `confirm-facts --source DOC` confirms a whole document, only if it has no issues.
 - `/research` does both automatically when `[research] auto_confirm_checked = true`.
 
+**Cross-verification (`/research` and `/verify`):**
+- `verify-targets [--symbol S]` lists pending facts **without values**, with `avoid_sites` (the first reading's site and sites already tried) and `denied_sites` (from `.claude/settings.json`).
+- `verify-facts --file F` takes the `fact-verifier` reply `{"readings": [{"fact_id", "value", "source_url", "source_ref", "note"}]}`. Each reading is stored in `fact_verification` with a verdict: `match` (confirmed, audited as `fact_verified`), `mismatch`, `check_issue`, `not_found`, `not_independent` (same registrable domain), `no_source` or `denied_source`.
+- Tolerances are in `[verification]` of `thresholds.toml`: 1% relative for amounts, 0.1 points for percentages, exact for flags.
+
 Run `python3 tools/isa.py metrics` for the full catalogue:
 
 | Group | Metrics |
