@@ -8,6 +8,10 @@
 4. No code under src/ or tools/ calls a broker order endpoint: this tool never
    places orders.
 5. The 5paisa client's endpoint allowlist holds read-only endpoints only.
+6. Skill frontmatter pre-approves no unscoped Bash/Write/Edit/WebFetch or
+   wildcard, and skills with side effects run only when the user types them.
+7. Subagents declare an explicit tool list without Write/Edit/Bash, only the
+   two web researchers may fetch, and every subagent has a maxTurns limit.
 """
 
 from __future__ import annotations
@@ -100,9 +104,92 @@ def check_fivepaisa_allowlist(errors: list[str]) -> None:
         errors.append(f"5paisa client: endpoint not on the read-only list: {path}")
 
 
+# Skills that write data, call brokers, fetch the web or start servers: user-typed only.
+SIDE_EFFECT_SKILLS = {"sync", "import", "research", "verify", "dashboard", "thesis"}
+WEB_AGENTS = {"company-researcher", "fact-verifier"}
+UNSCOPED = re.compile(r"^(Bash|Write|Edit|NotebookEdit|WebFetch|Bash\(\*\)|Bash\(:\*\)|\*|mcp__[A-Za-z0-9_]+(__\*)?)$")
+WRITE_TOOLS = {"Write", "Edit", "NotebookEdit", "Bash"}
+
+
+def frontmatter(path: Path) -> dict:
+    """Minimal YAML frontmatter reader: scalars, folded '>' blocks and '- item' lists."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    out: dict = {}
+    key = None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if line.startswith((" ", "\t")) and key:
+            item = line.strip()
+            if item.startswith("- "):
+                out[key] = (out[key] if isinstance(out[key], list) else []) + [item[2:].strip()]
+            else:
+                out[key] = (str(out[key]) + " " + item).strip()
+            continue
+        if ":" in line:
+            key, val = line.split(":", 1)
+            key, val = key.strip(), val.strip()
+            out[key] = "" if val in (">", "|", ">-", "|-") else val.strip('"').strip("'")
+    return out
+
+
+def tool_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [v.strip() for v in value if v.strip()]
+    parts, depth, cur = [], 0, ""
+    for ch in str(value or ""):  # split on commas outside parentheses
+        depth += (ch == "(") - (ch == ")")
+        if ch == "," and depth == 0:
+            parts.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        parts.append(cur.strip())
+    return parts
+
+
+def check_skills(errors: list[str]) -> None:
+    if (ROOT / ".claude" / "commands").is_dir() and any((ROOT / ".claude" / "commands").glob("*.md")):
+        errors.append(".claude/commands/: commands live in .claude/skills/<name>/SKILL.md now")
+    for f in sorted((ROOT / ".claude" / "skills").glob("*/SKILL.md")):
+        rel, fm = f.relative_to(ROOT), frontmatter(f)
+        name = fm.get("name") or f.parent.name
+        if not fm.get("description"):
+            errors.append(f"{rel}: missing description")
+        for tool in tool_list(fm.get("allowed-tools")):
+            if UNSCOPED.match(tool):
+                errors.append(f"{rel}: over-broad allowed-tools entry: {tool}")
+            if tool in ORDER_TOOLS or ORDER_CODE.search(tool):
+                errors.append(f"{rel}: order tool in allowed-tools: {tool}")
+        if name in SIDE_EFFECT_SKILLS and str(fm.get("disable-model-invocation", "")).lower() not in ("true", "yes", "on", "1"):
+            errors.append(f"{rel}: side-effect skill needs disable-model-invocation: true")
+
+
+def check_agents(errors: list[str]) -> None:
+    for f in sorted((ROOT / ".claude" / "agents").glob("*.md")):
+        rel, fm = f.relative_to(ROOT), frontmatter(f)
+        name, tools = fm.get("name", f.stem), tool_list(fm.get("tools"))
+        if not tools:
+            errors.append(f"{rel}: no explicit tools list (would inherit every tool)")
+        for tool in tools:
+            base = tool.split("(", 1)[0]
+            if base in WRITE_TOOLS or tool == "*":
+                errors.append(f"{rel}: subagent may not have {tool}")
+            if base in ("WebFetch", "WebSearch") and name not in WEB_AGENTS:
+                errors.append(f"{rel}: only {sorted(WEB_AGENTS)} may use {base}")
+            if tool in ORDER_TOOLS or ORDER_CODE.search(tool):
+                errors.append(f"{rel}: order tool in tools: {tool}")
+        if not str(fm.get("maxTurns", "")).isdigit():
+            errors.append(f"{rel}: missing maxTurns")
+
+
 def main() -> int:
     errors: list[str] = []
-    for check in (check_settings, check_mcp, check_gitignore, check_no_order_code, check_fivepaisa_allowlist):
+    for check in (check_settings, check_mcp, check_gitignore, check_no_order_code, check_fivepaisa_allowlist,
+                  check_skills, check_agents):
         try:
             check(errors)
         except (OSError, json.JSONDecodeError) as exc:

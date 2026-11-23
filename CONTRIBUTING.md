@@ -23,7 +23,7 @@ Both must pass. CI (`.github/workflows/ci.yml`) runs the same two commands.
 5. **Explainability.** Every scored input must produce an `Evidence` line with plain-language text and a stable `key`, which thesis conditions use.
 6. **Tests.** Add a test for every new rule, trigger or importer alias. Use synthetic data only (`tests/fixtures.py`). Never commit real portfolio data.
 7. **Untrusted input.** Importers validate types and units, and skip bad rows with a reason. They never execute or interpret text from data.
-8. **Workspace prompts.** Changes to `CLAUDE.md`, `.claude/commands`, `.claude/skills` or `.claude/agents` must keep the hard rules: no orders, code decides, personal use, no automated NSE/BSE access, untrusted data.
+8. **Workspace prompts.** Changes to `CLAUDE.md`, `.claude/skills` or `.claude/agents` must keep the hard rules: no orders, code decides, personal use, research only under `.claude/skills/research-rules/SKILL.md`, untrusted data. `tools/security_guards.py` checks skill and agent frontmatter too.
 
 ## Commit messages
 

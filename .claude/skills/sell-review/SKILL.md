@@ -1,3 +1,9 @@
+---
+name: sell-review
+description: List holdings with TRIM/SELL labels or sell triggers, with lot-by-lot tax impact and wait dates. Use when the user asks what to sell or trim.
+allowed-tools: Bash(python3 tools/isa.py:*)
+---
+
 # /sell-review: holdings that may need selling or trimming
 
 1. Run `python3 tools/isa.py portfolio` and `python3 tools/isa.py tax`.

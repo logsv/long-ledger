@@ -1,3 +1,11 @@
+---
+name: import
+description: Load files the user downloaded into data/imports/ (tradebooks, CAS, price files, fundamentals exports, PDFs via filing-reader) and confirm extracted facts.
+argument-hint: "[file or folder]"
+disable-model-invocation: true
+allowed-tools: Bash(python3 tools/isa.py:*), Read, Glob, Grep, Write(data/imports/**)
+---
+
 # /import: load manual downloads from data/imports/
 
 The user downloads files by hand: broker tradebooks, CAS statements, NSE/BSE files, Screener/Tijori exports, annual reports and results. Never fetch from nseindia.com or bseindia.com yourself.

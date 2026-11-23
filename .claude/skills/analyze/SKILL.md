@@ -1,6 +1,14 @@
+---
+name: analyze
+description: Full breakdown of one stock from the engine: label, confidence, block scores and evidence, vetoes, valuation assumptions, timing, triggers and tax lots. Use when the user asks about a single stock.
+argument-hint: "<SYMBOL>"
+arguments: symbol
+allowed-tools: Bash(python3 tools/isa.py:*)
+---
+
 # /analyze <SYMBOL>: full breakdown for one stock
 
-1. Run `python3 tools/isa.py analyze $ARGUMENTS`. If the stock is new, suggest `python3 tools/isa.py watch add <SYMBOL>`, then `/sync` for prices and `/import` for fundamentals.
+1. Run `python3 tools/isa.py analyze $symbol`. If the stock is new, suggest `python3 tools/isa.py watch add <SYMBOL>`, then `/sync` for prices and `/import` for fundamentals.
 2. Present from the JSON only:
    - **Label, confidence and composite**, plus the confidence parts (coverage, completeness, agreement, freshness).
    - **Each block** (fundamentals, governance, valuation): its score, completeness, and every evidence line (`text`). Mark lines with `points: null` as informational.

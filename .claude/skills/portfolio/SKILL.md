@@ -1,3 +1,9 @@
+---
+name: portfolio
+description: Score every holding and watchlist stock with the engine and show labels, confidence, triggers, caps, tax waits and monitoring flags. Use for a portfolio overview.
+allowed-tools: Bash(python3 tools/isa.py:*)
+---
+
 # /portfolio: score holdings and watchlist
 
 1. Run `python3 tools/isa.py portfolio`. This stores a signal for every stock and writes it to the audit log.

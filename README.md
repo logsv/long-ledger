@@ -197,7 +197,7 @@ Kite and INDmoney sync still runs through `/sync` in Claude Code.
 
 It is built from the Python standard library plus [Tabulator](https://tabulator.info) 6.3.1 (MIT). Tabulator is stored in `src/isa/web/static/vendor/`, so the page needs no internet.
 
-**Changing it:** `.claude/skills/stock-analysis/07-dashboard.md` covers the files, routes, security rules, and how to add a view or a button safely. The `/dashboard` command and the skill both keep every change inside the rules below.
+**Changing it:** `.claude/skills/dashboard/building.md` covers the files, routes, security rules, and how to add a view or a button safely. The `/dashboard` command and the skill both keep every change inside the rules below.
 
 **Safety:**
 - listens on 127.0.0.1 only, and rejects other Host headers
@@ -267,7 +267,8 @@ All tunables are in `config/*.toml`:
 CLAUDE.md                 workspace rules and investor profile (read by Claude)
 .mcp.json                 Kite and INDmoney MCP servers
 .claude/settings.json     permissions: order tools and exchange/aggregator sites denied; core CLI and dashboard launcher allowed
-.claude/commands/         /sync /research /verify /dashboard /portfolio /report /sell-review /analyze /thesis /import
+.claude/skills/           one folder per command (/sync /research /verify /dashboard /portfolio /report /sell-review /analyze /thesis /import),
+                          plus stock-analysis (domain knowledge) and research-rules (shared web-research rules)
 .claude/skills/           stock-analysis knowledge (rubric, governance, valuation, tax, trust boundary, dashboard)
 .claude/agents/           company-researcher, fact-verifier, filing-reader, governance-checker, news-summarizer (read-only)
 config/                   thresholds, weights, valuation assumptions, tax rules (TOML)

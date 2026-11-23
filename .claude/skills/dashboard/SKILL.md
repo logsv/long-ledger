@@ -1,8 +1,16 @@
+---
+name: dashboard
+description: Start, check or stop the local-only dashboard on 127.0.0.1:8770, or explain how to extend it.
+argument-hint: "[start|status|stop]"
+disable-model-invocation: true
+allowed-tools: Bash(python3 tools/dashboard.py:*), Bash(python3 tools/isa.py:*)
+---
+
 # /dashboard: start, check or stop the local dashboard
 
-The dashboard is a live browser view of the database: Overview, Holdings, Trades, Tax lots and Data quality, with filters, grouping, CSV export and buttons. The server is `python3 tools/dashboard.py`, built from the Python standard library plus the vendored Tabulator. Details are in `.claude/skills/stock-analysis/07-dashboard.md`.
+The dashboard is a live browser view of the database: Overview, Holdings, Trades, Tax lots and Data quality, with filters, grouping, CSV export and buttons. The server is `python3 tools/dashboard.py`, built from the Python standard library plus the vendored Tabulator. Details are in `[building.md](building.md)`.
 
-**Local only, not in git:** the dashboard code (`src/isa/web/`, `tools/dashboard.py`, `tests/test_web.py`) is listed in `.gitignore` and exists only on this machine. A fresh clone has these instructions but not the code; rebuild it from `07-dashboard.md`.
+**Local only, not in git:** the dashboard code (`src/isa/web/`, `tools/dashboard.py`, `tests/test_web.py`) is listed in `.gitignore` and exists only on this machine. A fresh clone has these instructions but not the code; rebuild it from [building.md](building.md).
 
 If `tools/dashboard.py` is missing, say so and offer to rebuild it from the skill file. Never fetch code from elsewhere.
 
@@ -31,4 +39,4 @@ Stop the background task that runs `tools/dashboard.py`. If it wasn't started in
 
 ## Rules
 - The dashboard listens on **127.0.0.1 only**. Never add `--host`, never bind to all interfaces, never expose it through a tunnel or share the URL.
-- It has **no order actions**, and must never get any. To add a view or a button, follow `07-dashboard.md`, keep `python3 tools/security_guards.py` passing, and add a test to `tests/test_web.py`.
+- It has **no order actions**, and must never get any. To add a view or a button, follow [building.md](building.md), keep `python3 tools/security_guards.py` passing, and add a test to `tests/test_web.py`.
