@@ -126,7 +126,7 @@ Each check shows ✓ OK, ! Watch, ✗ Concern or ? No data, with its reasons and
 
 ## Status
 
-Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research buckets and source tiers, schema v5, scorecard).
+Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research buckets and source tiers, blind fact verification, commands as skills, schema v6, scorecard, sell check, `/daily`).
 
 | Area | Status |
 |---|---|
@@ -137,7 +137,7 @@ Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research
 | Risk flags, timing, tax view, report, audit log | Built |
 | Trade history imports | Built: Kite tradebook (CSV/XLSX); 5paisa Trade Listing and EQUITY Transaction statement; INDmoney consolidated tax report. Splits, off-market transfers and demergers are handled |
 | INDmoney full trade history | Not available yet. The tax report covers sold shares only, so current INDmoney holdings keep estimated dates |
-| Company data from company websites (`/research`) | Built: research subagent with source tiers and fact origins, fact checks, automatic confirmation of clean official documents, retry of failed or partial runs, update of stale data |
+| Company data from company websites (`/research`) | Built: research subagent with source tiers and fact origins, fact checks, automatic confirmation of clean official documents, blind cross-verification of third-party and model facts (`fact-verifier`, `/verify`), retry of failed or partial runs, update of stale data |
 | Company scoring (fundamentals, governance, valuation) | Built. Active for each company once its data is confirmed |
 | Sector and events blocks | Planned |
 | Local dashboard (`/dashboard`) | Built, **local-only**: the code is git-ignored and kept on this machine; its command, skill and docs are in git |
@@ -156,8 +156,8 @@ Version 0.7.1, plus unreleased changes in [CHANGELOG.md](CHANGELOG.md) (research
 ```bash
 cd ~/Documents/india-stock-analyzer
 python3 tools/isa.py init              # creates data/isa.db (migrates older databases)
-python3 -m unittest discover -s tests  # 78 tests (85 with the local dashboard tests)
-python3 tools/security_guards.py       # order tools blocked, secrets ignored
+python3 -m unittest discover -s tests  # 95 tests (plus the local-only dashboard tests)
+python3 tools/security_guards.py       # order tools blocked, secrets ignored, skill and agent tool limits
 ```
 
 **Kite and INDmoney.** Open the folder in Claude Code and approve the project MCP servers (`kite`, `indmoney`). Run `/mcp` to sign in on each broker's own page.
@@ -274,6 +274,8 @@ The full table is in `.claude/skills/memory/SKILL.md`. Claude checks every draft
 
 ## Slash commands
 
+Each command is a skill in `.claude/skills/<name>/SKILL.md`. The ones that write data, call brokers, fetch the web or start a server (`/daily`, `/sync`, `/import`, `/research`, `/verify`, `/dashboard`, `/thesis`, `/memory`) run only when you type them; Claude can start `/portfolio`, `/analyze`, `/sell-review` and `/report` on its own.
+
 | Command | What it does |
 |---|---|
 | `/sync` | All three brokers, plus Kite indices and VIX, plus INDmoney classification, into the database |
@@ -369,6 +371,7 @@ See [SECURITY.md](SECURITY.md). In short:
 - **No orders, in layers:** the older per-action broker order and GTT tools are denied in `.claude/settings.json`; the 5paisa client can only call read endpoints; no order code exists anywhere; and `tools/security_guards.py` checks all of this in CI.
 - **Kite's combined `orders` tool.** Kite's MCP server now reads and changes orders through one `orders` tool with a `mode` argument, so a deny entry can't separate the two. `tools/kite_order_guard.py` is a PreToolUse hook script that allows only the read modes (`list`, `history`, `trades`, `all_trades`) and blocks everything else; it is tested in `tests/test_cli_guards.py`. It is registered as a PreToolUse hook on `mcp__kite__orders` in `.claude/settings.json`.
 - **No secrets in the repo.** Claude cannot read `.env`. 5paisa keys and tokens stay in the Keychain.
+- **Narrow tool grants.** Skills pre-approve only `python3 tools/isa.py` and writes under `data/imports/`; subagents have explicit read-only tool lists and a turn limit, and only the two research agents can fetch the web. `security_guards.py` fails if a skill or agent definition widens this, or if a skill with side effects can be started without you typing it.
 - **Web research starts with company websites.** Other public sources and model knowledge are fallbacks, every fact records its origin, and non-official facts need an independent matching reading. Exchange and aggregator domains are denied. Searches carry company names only. Official documents are confirmed automatically only if every consistency check passes.
 - **Untrusted data.** All broker output, web pages and imported files are treated as data, never as instructions.
 
